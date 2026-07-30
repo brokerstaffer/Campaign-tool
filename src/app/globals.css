@@ -1,0 +1,145 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * Light-only by deliberate choice: every screen in the spec and every reference
+ * screenshot is light. The .dark block below is kept in sync but is unreachable —
+ * there is no ThemeProvider and no toggle. Keeping it means enabling dark later
+ * is a config change rather than a re-theme.
+ */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-hairline: var(--hairline);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Series colours. Entity-fixed — see src/lib/analytics/series.ts.
+     Validated as a set for lightness/chroma separation and CVD distinguishability. */
+  --color-series-sent: var(--series-sent);
+  --color-series-replies: var(--series-replies);
+  --color-series-human: var(--series-human);
+  --color-series-positive: var(--series-positive);
+  --color-series-prospects: var(--series-prospects);
+  --color-series-bounces: var(--series-bounces);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.625rem;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+
+  --primary: oklch(0.546 0.161 259.2); /* #2a78d6 — the app accent, same as series-sent */
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --success: oklch(0.63 0.17 149);
+  --warning: oklch(0.75 0.16 70);
+
+  /* Two weights of rule. `border` for component edges, `hairline` for the
+     KPI-band and table grid lines, which must read lighter than a card edge. */
+  --border: oklch(0.922 0 0);
+  --hairline: oklch(0.945 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+
+  --series-sent: #2a78d6;
+  --series-replies: #eb6834;
+  --series-human: #1baf7a;
+  --series-positive: #008300;
+  --series-prospects: #4a3aa7;
+  --series-bounces: #e34948;
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.62 0.15 259.2);
+  --primary-foreground: oklch(0.145 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.985 0 0);
+  --success: oklch(0.7 0.16 149);
+  --warning: oklch(0.8 0.15 70);
+  --border: oklch(1 0 0 / 12%);
+  --hairline: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  /*
+   * Every number in this product is tabular. Metrics sit in columns that must
+   * align vertically, and proportional digits make a KPI band shimmer as values
+   * refetch. Applied globally rather than per-call-site so it can't be forgotten.
+   */
+  .tnum,
+  [data-metric] {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+}
+
+@utility hairline-x {
+  border-inline-end: 1px solid var(--hairline);
+}
+
+@utility hairline-y {
+  border-block-end: 1px solid var(--hairline);
+}

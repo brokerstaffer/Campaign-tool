@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+build
+.DS_Store
+
+.env
+.env*.local
+
+*.tsbuildinfo
+next-env.d.ts
+
+# probe output is checked in (docs/eb-api-findings.md); raw dumps are not
+scripts/.probe-cache/
