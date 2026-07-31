@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmailPanel } from "@/components/analytics/email-panel";
 import { CopySequenceDialog } from "@/components/campaigns/copy-sequence-dialog";
+import { SequenceEditor, type EditableStep } from "@/components/campaigns/sequence-editor";
 import { fullNumber, percent } from "@/lib/analytics/format.ts";
 import { STATUS_TONE, canApply, isKnownStatus } from "@/lib/campaigns/status.ts";
 import { cn } from "@/lib/utils";
@@ -77,6 +78,7 @@ interface Campaign {
   include_auto_replies_in_stats: boolean | null;
   sequence_prioritization: string | null;
   eb_created_at: string | null;
+  sequence_id: number | null;
   excluded: boolean;
   excludeReason: string | null;
 }
@@ -97,6 +99,7 @@ interface DetailResponse {
   sequence: Step[];
   variantCount: number;
   activity: Activity[];
+  sentStepIds: number[];
 }
 
 const TABS = ["Overview", "Sequence", "Settings", "Activity"] as const;
@@ -160,7 +163,7 @@ export function CampaignDetail({ id }: { id: number }) {
     );
   }
 
-  const { campaign, sequence, variantCount, activity } = data;
+  const { campaign, sequence, variantCount, activity, sentStepIds } = data;
 
   // Shown only when it can actually be applied. Neither → no primary button.
   const primary = canApply("pause", campaign.status)
@@ -277,7 +280,13 @@ export function CampaignDetail({ id }: { id: number }) {
       <div className="min-h-0 flex-1 overflow-auto p-6">
         {tab === "Overview" ? <Overview campaign={campaign} /> : null}
         {tab === "Sequence" ? (
-          <Sequence steps={sequence} campaignId={campaign.id} campaignName={campaign.name} />
+          <Sequence
+            steps={sequence}
+            campaignId={campaign.id}
+            campaignName={campaign.name}
+            sequenceId={campaign.sequence_id ?? null}
+            sentStepIds={sentStepIds ?? []}
+          />
         ) : null}
         {tab === "Settings" ? <Settings campaign={campaign} /> : null}
         {tab === "Activity" ? <ActivityLog rows={activity} /> : null}
@@ -442,16 +451,53 @@ function Sequence({
   steps,
   campaignId,
   campaignName,
+  sequenceId,
+  sentStepIds,
 }: {
   steps: Step[];
   campaignId: number;
   campaignName: string;
+  sequenceId: number | null;
+  sentStepIds: number[];
 }) {
   const [open, setOpen] = useState<number | null>(steps[0]?.id ?? null);
   const [copying, setCopying] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  /*
+   * Variants are flattened back out for editing. The read view nests them under
+   * their parent, but EmailBison's sequence is a flat ordered list and saving a
+   * nested shape would have to invent an ordering for the variants.
+   */
+  const editable: EditableStep[] = steps
+    .flatMap((step) => [step, ...step.variants])
+    .map((step) => ({
+      key: `s${step.id}`,
+      id: step.id,
+      email_subject: step.email_subject ?? "",
+      email_body: step.email_body ?? "",
+      wait_in_days: step.wait_in_days ?? 0,
+      thread_reply: Boolean(step.thread_reply),
+      variant: Boolean(step.is_variant),
+    }));
+
+  if (editing) {
+    return (
+      <SequenceEditor
+        campaignId={campaignId}
+        sequenceId={sequenceId}
+        initial={editable}
+        sentStepIds={sentStepIds}
+        onDone={() => setEditing(false)}
+      />
+    );
+  }
 
   const copyButton = (
     <>
+      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setEditing(true)}>
+        Edit sequence
+      </Button>
       <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setCopying(true)}>
         Copy sequence from…
       </Button>
@@ -471,14 +517,14 @@ function Sequence({
           This campaign has no sequence steps cached. Run sync-steps if it has one upstream, or
           copy a sequence from another campaign.
         </p>
-        {copyButton}
+        <div className="flex gap-2">{copyButton}</div>
       </div>
     );
   }
 
   return (
     <div className="max-w-4xl space-y-2">
-      <div className="flex justify-end pb-1">{copyButton}</div>
+      <div className="flex justify-end gap-2 pb-1">{copyButton}</div>
       {steps.map((step, index) => (
         <div key={step.id} className="rounded-lg border">
           <button

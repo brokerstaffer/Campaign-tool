@@ -110,7 +110,16 @@ export async function GET(
       variants: allSteps.filter((v) => v.is_variant && v.variant_from_step_id === step.id),
     }));
 
+  // Steps EmailBison will refuse to delete, so the editor can disable removal
+  // rather than let a save fail halfway.
+  const sentStepIds = [
+    ...new Set(
+      (stepStats.data ?? []).filter((r) => (r.sent ?? 0) > 0).map((r) => r.sequence_step_id),
+    ),
+  ];
+
   return NextResponse.json({
+    sentStepIds,
     campaign: {
       ...campaign.data,
       clientId: mapping.data?.client_id ?? null,
