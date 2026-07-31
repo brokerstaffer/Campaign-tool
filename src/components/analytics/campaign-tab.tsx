@@ -3,6 +3,7 @@
 import { KpiBand } from "./kpi-band";
 import { Segmented } from "./segmented";
 import { useAnalyticsFilters } from "./filters-context";
+import { useKpis } from "./use-kpis";
 import { SUB_VIEWS, type SubView } from "@/lib/analytics/query-params.ts";
 
 /*
@@ -24,12 +25,11 @@ const SUB_VIEW_OPTIONS: Array<{ value: SubView; label: string }> = [
 
 export function CampaignTab() {
   const { filters, setFilters } = useAnalyticsFilters();
+  const { cells, isLoading } = useKpis();
 
   return (
     <>
-      {/* P0: the band renders its own layout with DASH placeholders. Real
-          numbers arrive in P2 with /api/analytics/kpis. */}
-      <KpiBand cells={[]} />
+      <KpiBand cells={cells} loading={isLoading} />
 
       <div className="border-b px-4">
         <Segmented
