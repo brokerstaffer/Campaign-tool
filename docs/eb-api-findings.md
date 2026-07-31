@@ -555,3 +555,65 @@ Two consequences:
 Final state of campaign 69 after probing: `paused`, `emails_sent: 0`,
 `total_leads_contacted: 0` — nothing was sent. It was `completed` before the
 probe, and no endpoint restores that status.
+
+## Sequence + lifecycle writes (probed 2026-08-01 on campaign 13, "Front Range Realty - OpsLabs Test")
+
+Campaign 13 was snapshotted, probed, and restored byte-identical. A throwaway
+duplicate (129) absorbed the destructive tests and was deleted.
+
+| Call | Behaviour |
+|---|---|
+| `POST /api/campaigns/v1.1/{id}/sequence-steps` | **Appends.** Existing steps untouched. Body `{title, sequence_steps: [...]}`. |
+| `PUT /api/campaigns/v1.1/sequence-steps/{sequence_id}` | **Updates only the steps you list, by `id`.** |
+| `DELETE /api/campaigns/sequence-steps/{step_id}` | 200 `{success: true}`. Deleting again → 404 `Record not found.` |
+| `POST /api/campaigns/{id}/duplicate` | Creates a `draft` copy named `Copy of <name>`, 0 leads, with a **deep-copied sequence**. |
+| `PATCH /api/campaigns/{id}/archive` | 200. |
+| `DELETE /api/campaigns/{id}` | 200 `"...has been queued for deletion."` — **asynchronous**. |
+
+### There is no "replace the sequence" call
+
+`PUT` requires an `id` on every step (`The sequence_steps.1.id field is
+required.`) so it cannot create, and it does **not** delete the steps you omit —
+verified by PUTting a one-step body against a two-step sequence and getting two
+steps back.
+
+So §9.4's **Replace** mode is necessarily `DELETE` every existing step, then
+`POST` the new ones: several calls, no transaction, and a window in which the
+target campaign has no sequence at all. That is precisely why the spec demands
+the previous sequence be recorded before anything is overwritten — it is the
+only way back.
+
+**Append** mode, by contrast, is a single `POST`.
+
+### The duplicate response reports the SOURCE's sequence_id
+
+`POST /api/campaigns/13/duplicate` returned `{"id": 129, "sequence_id": 9}` —
+but campaign 129's actual sequence is **117**, with its own step ids. Sequence 9
+belongs to campaign 13.
+
+Anything that duplicates a campaign and then edits `response.sequence_id` would
+silently rewrite the ORIGINAL campaign's emails. Always re-fetch
+`/api/campaigns/v1.1/{newId}/sequence-steps`.
+
+### Archive is one-way
+
+There is no unarchive, restore or untrash endpoint in the whole API. Archiving
+twice leaves it archived, and `resume` on an archived campaign fails. Treat
+Archive as terminal in the UI and confirm it like one.
+
+### `thread_reply: true` rewrites the subject
+
+A step posted with `email_subject: "PROBE STEP 2"` and `thread_reply: true` came
+back as `"Re: PROBE STEP 2"`. EmailBison owns the prefix, so an editor must not
+show the user's typed subject as saved — re-read it.
+
+### Two more real error messages, now surfaced verbatim
+
+- `resume` on an incomplete campaign → 400: *"This campaign is incomplete and
+  cannot be launched. Campaigns should have a completed sequence and schedule,
+  and should have leads and sender emails."*
+- `PUT` sequence-steps without ids → 422: *"The sequence_steps.1.id field is
+  required."*
+
+Both arrive as `{"data": {"success": false, "message": ...}}` with a correct
+non-2xx status, which is why `describeEmailBisonError` unwraps `data`.
