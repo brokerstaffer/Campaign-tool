@@ -5,6 +5,7 @@ import { Segmented } from "./segmented";
 import { useAnalyticsFilters } from "./filters-context";
 import { useKpis } from "./use-kpis";
 import { ChartsView } from "./charts-view";
+import { ClientsView } from "./clients-view";
 import { SUB_VIEWS, type SubView } from "@/lib/analytics/query-params.ts";
 
 /*
@@ -45,6 +46,8 @@ export function CampaignTab() {
       <div className="flex-1 p-4">
         {filters.view === "charts" ? (
           <ChartsView />
+        ) : filters.view === "clients" ? (
+          <ClientsView />
         ) : (
           <SubViewPlaceholder view={filters.view} />
         )}
