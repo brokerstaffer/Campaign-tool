@@ -6,7 +6,8 @@ import { useAnalyticsFilters } from "./filters-context";
 import { useKpis } from "./use-kpis";
 import { ChartsView } from "./charts-view";
 import { ClientsView } from "./clients-view";
-import { SUB_VIEWS, type SubView } from "@/lib/analytics/query-params.ts";
+import { CampaignsView } from "./campaigns-view";
+import { type SubView } from "@/lib/analytics/query-params.ts";
 
 /*
  * The Campaign tab: KPI band, then a sub-view switcher.
@@ -49,26 +50,10 @@ export function CampaignTab() {
         ) : filters.view === "clients" ? (
           <ClientsView />
         ) : (
-          <SubViewPlaceholder view={filters.view} />
+          <CampaignsView />
         )}
       </div>
     </>
   );
 }
 
-/** Temporary. Each of these becomes a real component in P3–P5. */
-function SubViewPlaceholder({ view }: { view: SubView }) {
-  const copy: Record<SubView, string> = {
-    charts: "Daily volume and rate series.",
-    clients: "Per-client rollup, derived from campaign names.",
-    campaigns: "Campaign → variant → step, with the column picker.",
-  };
-
-  if (!SUB_VIEWS.includes(view)) return null;
-
-  return (
-    <div className="flex h-64 items-center justify-center rounded-lg border border-dashed">
-      <p className="text-xs text-muted-foreground">{copy[view]}</p>
-    </div>
-  );
-}
