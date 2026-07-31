@@ -499,3 +499,59 @@ be filtered to a date range, and it agrees with the per-campaign endpoint.
 The `sentiment` / `sentiment_source` columns in migration 003 stay: they let a
 classifier be layered on later without a migration, and `sentiment_source`
 records whether a row came from `eb_interested` or something else.
+
+## Campaign write endpoints (probed 2026-07-31, campaign 69 — a zero-send test campaign)
+
+| Endpoint | Result |
+|---|---|
+| `PATCH /api/campaigns/{id}/pause` | 200, empty body. `completed` → `paused`. |
+| `PATCH /api/campaigns/{id}/resume` | 200, returns the full campaign object. `paused` → **`queued`**. |
+| `PATCH /api/campaigns/{id}/archive` | documented; not probed against a live campaign |
+| `POST /api/campaigns/{id}/duplicate` | documented; not probed |
+| `DELETE /api/campaigns/bulk` | body `{campaign_ids: []}` |
+| `PATCH /api/campaigns/{id}/update` | name, max_emails_per_day, max_new_leads_per_day, plain_text, open_tracking, reputation_building, can_unsubscribe, include_auto_replies_in_stats, sequence_prioritization |
+| `POST /api/tags/{attach-to,remove-from}-campaigns` | body `{tag_ids: [], campaign_ids: []}` — the only genuinely bulk write besides delete |
+
+**`resume` does not restore the previous status — it queues the campaign to send.**
+
+This is the most important line on this page. Campaign 69 was `completed` with
+0 sent and 828 leads attached; one `resume` call put it in `queued`, i.e. ready
+to email 828 real people. There is no "undo" that returns it to `completed` —
+the only safe recovery is `pause`.
+
+Two consequences for the UI, both load-bearing:
+
+1. **Resume is only offered for campaigns that are actually `paused`.** Offering
+   it on a `completed` campaign reads as "un-hide this row" and is in fact
+   "start sending to everyone in it".
+2. **The confirmation names the lead count.** "Resume — up to 828 leads may
+   receive email" is a different decision from "Resume".
+
+There is also a `queued` status that appears nowhere in the workspace snapshot
+(`draft`, `launching`, `active`, `paused`, `completed`, `archived`), because it
+is transient. Status vocabularies must include it or a resumed campaign renders
+as an unknown state.
+
+### Pause is not always sticky
+
+Observed while wiring the actions UI. Campaign 69 was paused at 18:59 and
+`GET /api/campaigns/69` confirmed `paused`. The `sync-entities` run minutes
+later read it back as `active`, and the audit log recorded `before_state:
+{status: "active"}` when it was paused again at 19:28.
+
+So EmailBison can re-activate a campaign after a pause — presumably its own
+scheduler picking up a campaign that still has a sending schedule attached.
+
+Two consequences:
+
+1. **Never treat an action's own response as the new state.** The UI refetches
+   the list from the cache after every action, and the cache is written from
+   what EmailBison reported, not from what we asked for. Optimistic updates
+   would show "paused" on a campaign that is sending.
+2. **A pause may need re-applying.** Worth surfacing if it recurs; for now the
+   audit log makes it visible, because `before_state` records what the campaign
+   actually was at the moment of each action rather than what we last saw.
+
+Final state of campaign 69 after probing: `paused`, `emails_sent: 0`,
+`total_leads_contacted: 0` — nothing was sent. It was `completed` before the
+probe, and no endpoint restores that status.

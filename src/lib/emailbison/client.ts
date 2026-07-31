@@ -194,6 +194,65 @@ export class EmailBisonClient {
     });
   }
 
+  // --- campaign writes --------------------------------------------------------
+  // These change what real prospects receive. Every caller must record the
+  // outcome in campaign_audit_log, and must never report success it didn't get.
+
+  /** `active`/`completed` → `paused`. Returns 200 with an empty body. */
+  async pauseCampaign(id: number) {
+    return this.request<unknown>(`/api/campaigns/${id}/pause`, { method: "PATCH" });
+  }
+
+  /**
+   * `paused` → `queued`. NOT an undo of pause.
+   *
+   * Probed 2026-07-31: campaign 69 went `completed` → `paused` → `queued`, i.e.
+   * from finished to ready-to-email its 828 attached leads. There is no call
+   * that returns it to `completed`. Callers must confirm with the lead count in
+   * front of the operator. See docs/eb-api-findings.md.
+   */
+  async resumeCampaign(id: number) {
+    return this.request<{ data?: EBCampaign }>(`/api/campaigns/${id}/resume`, {
+      method: "PATCH",
+    });
+  }
+
+  async archiveCampaign(id: number) {
+    return this.request<unknown>(`/api/campaigns/${id}/archive`, { method: "PATCH" });
+  }
+
+  async duplicateCampaign(id: number) {
+    return this.request<{ data?: EBCampaign }>(`/api/campaigns/${id}/duplicate`, {
+      method: "POST",
+    });
+  }
+
+  /** Settings only — name, limits, tracking flags. Never status. */
+  async updateCampaign(id: number, patch: Record<string, unknown>) {
+    return this.request<{ data?: EBCampaign }>(`/api/campaigns/${id}/update`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    });
+  }
+
+  /**
+   * Tags are the ONLY genuinely bulk campaign write EmailBison offers besides
+   * delete — pause, resume and archive are all per-campaign, so a bulk pause is
+   * a fan-out that has to report per-item results.
+   */
+  async setCampaignTags(
+    action: "attach" | "remove",
+    tagIds: number[],
+    campaignIds: number[],
+  ) {
+    const path =
+      action === "attach" ? "/api/tags/attach-to-campaigns" : "/api/tags/remove-from-campaigns";
+    return this.request<unknown>(path, {
+      method: "POST",
+      body: JSON.stringify({ tag_ids: tagIds, campaign_ids: campaignIds }),
+    });
+  }
+
   async getCampaignSequenceSteps(id: number) {
     return this.request<EBSequenceStepsResponse>(
       `/api/campaigns/v1.1/${id}/sequence-steps`,

@@ -1,94 +1,28 @@
-import {
-  BarChart3,
-  Ban,
-  Crosshair,
-  Database,
-  Inbox,
-  Mail,
-  MessageSquareReply,
-  Plug,
-  Users,
-  type LucideIcon,
-} from "lucide-react";
+import { BarChart3, Mail, type LucideIcon } from "lucide-react";
 
 /*
- * The nav mirrors the reference product so the shape is familiar, but only the
- * routes that exist are navigable.
+ * Two destinations, both real.
  *
- * `status: "soon"` items render as dimmed, non-interactive labels rather than
- * being omitted. An omitted item reads as *missing*; a dimmed one with a Soon
- * chip reads as *planned* — and these screenshots are the contract with the
- * client. Critically they are NOT links and there are NO stub pages: a route
- * that resolves to an empty shell is worse than a label that doesn't navigate.
+ * This file used to mirror the reference product's full sidebar with dimmed
+ * "Soon" placeholders — the theory being that an omitted item reads as missing
+ * while a dimmed one reads as planned. In practice seven of nine rows were
+ * dead, which makes the two live ones harder to find rather than easier to
+ * trust.
+ *
+ * NOTE: /clients is still a working page and is no longer linked from here.
+ * It is where the campaign→client mapping is maintained, so it needs a way in
+ * from somewhere before anyone has to fix an unassigned campaign.
  */
-
-export type NavStatus = "live" | "soon";
 
 export interface NavItem {
   label: string;
   href: string;
   icon: LucideIcon;
-  status: NavStatus;
 }
 
-export interface NavGroup {
-  /** Section heading. `null` renders the items flush, with no label. */
-  label: string | null;
-  items: NavItem[];
-}
-
-export const NAV: NavGroup[] = [
-  {
-    label: null,
-    items: [
-      { label: "Inbox", href: "/inbox", icon: Inbox, status: "soon" },
-      { label: "Campaigns", href: "/campaigns", icon: Mail, status: "soon" },
-    ],
-  },
-  {
-    label: "Insights",
-    items: [
-      {
-        label: "Analytics",
-        href: "/analytics/campaign",
-        icon: BarChart3,
-        status: "live",
-      },
-      {
-        label: "Attribution",
-        href: "/analytics/attribution",
-        icon: Crosshair,
-        status: "soon",
-      },
-    ],
-  },
-  {
-    label: "Manage",
-    items: [
-      // The reference calls this "Teams". With a single EmailBison workspace
-      // that label describes a constant — client is the real grouping axis.
-      { label: "Clients", href: "/clients", icon: Users, status: "live" },
-      { label: "Lead DB", href: "/leads", icon: Database, status: "soon" },
-    ],
-  },
-  {
-    label: "System",
-    items: [
-      {
-        label: "Responders",
-        href: "/responders",
-        icon: MessageSquareReply,
-        status: "soon",
-      },
-      { label: "Blacklist", href: "/blacklist", icon: Ban, status: "soon" },
-      {
-        label: "Integrations",
-        href: "/integrations",
-        icon: Plug,
-        status: "soon",
-      },
-    ],
-  },
+export const NAV: NavItem[] = [
+  { label: "Campaigns", href: "/campaigns", icon: Mail },
+  { label: "Analytics", href: "/analytics/campaign", icon: BarChart3 },
 ];
 
 /** Active when the path is the item or a descendant of it. */

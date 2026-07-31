@@ -1,0 +1,91 @@
+import { NextResponse, type NextRequest } from "next/server";
+import { getSupabase } from "@/lib/supabase/server";
+
+/*
+ * The campaign list, served from the Supabase cache — never from EmailBison.
+ *
+ * This is the speed decision that matters most on this page. A live fan-out
+ * would be ~1 call per page of campaigns plus one per campaign for stats, on
+ * every keystroke of the search box. Reading the cache is a single indexed
+ * query, and the cache is at most 30 minutes stale for names and instantly
+ * correct for status, because every action writes its result through.
+ *
+ * Filtering and counting both happen in SQL. Fetching 95 rows and filtering in
+ * JS would work today and silently truncate at 1000 later — the PostgREST cap
+ * this codebase has been bitten by before.
+ */
+
+export const dynamic = "force-dynamic";
+
+const TEAM_ID = () => Number(process.env.EMAILBISON_TEAM_ID || 2);
+
+export async function GET(request: NextRequest) {
+  const sb = getSupabase();
+  const teamId = TEAM_ID();
+  const params = request.nextUrl.searchParams;
+
+  const status = params.get("status") ?? "all";
+  const search = (params.get("q") ?? "").trim();
+  const clientId = params.get("client_id");
+  const limit = Math.min(Number(params.get("limit") ?? 200), 500);
+  const offset = Math.max(Number(params.get("offset") ?? 0), 0);
+
+  let query = sb
+    .from("campaigns")
+    .select(
+      "id, name, status, type, tags, total_leads, lifetime_emails_sent, max_emails_per_day, eb_created_at, eb_updated_at",
+      { count: "estimated" },
+    )
+    .eq("team_id", teamId);
+
+  if (status !== "all") query = query.eq("status", status);
+  // `ilike` with a leading wildcard can't use a btree index, but at 95 rows
+  // that is irrelevant; revisit with a trigram index if this grows.
+  if (search) query = query.ilike("name", `%${search}%`);
+
+  const [{ data: rows, error, count }, mappings, clients, counts] = await Promise.all([
+    query.order("lifetime_emails_sent", { ascending: false, nullsFirst: false })
+      .range(offset, offset + limit - 1),
+    sb.from("campaign_clients").select("campaign_id, client_id, excluded, ambiguous"),
+    sb.from("clients").select("id, name").eq("team_id", teamId),
+    // One grouped read for the status pills, so their numbers describe the
+    // whole workspace rather than the current page.
+    sb.from("campaigns").select("status").eq("team_id", teamId),
+  ]);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const clientById = new Map((clients.data ?? []).map((c) => [c.id, c.name]));
+  const mapByCampaign = new Map((mappings.data ?? []).map((m) => [m.campaign_id, m]));
+
+  let items = (rows ?? []).map((c) => {
+    const mapping = mapByCampaign.get(c.id);
+    return {
+      ...c,
+      clientId: mapping?.client_id ?? null,
+      clientName: mapping?.client_id ? (clientById.get(mapping.client_id) ?? null) : null,
+      excluded: Boolean(mapping?.excluded),
+      ambiguous: Boolean(mapping?.ambiguous),
+    };
+  });
+
+  if (clientId) {
+    items =
+      clientId === "unassigned"
+        ? items.filter((c) => !c.clientId && !c.excluded)
+        : items.filter((c) => c.clientId === clientId);
+  }
+
+  const statusCounts: Record<string, number> = {};
+  for (const row of counts.data ?? []) {
+    statusCounts[row.status] = (statusCounts[row.status] ?? 0) + 1;
+  }
+
+  return NextResponse.json({
+    items,
+    total: count ?? items.length,
+    statusCounts,
+    all: (counts.data ?? []).length,
+    clients: (clients.data ?? []).map((c) => ({ id: c.id, name: c.name })),
+  });
+}
