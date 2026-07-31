@@ -4,6 +4,7 @@ import { KpiBand } from "./kpi-band";
 import { Segmented } from "./segmented";
 import { useAnalyticsFilters } from "./filters-context";
 import { useKpis } from "./use-kpis";
+import { ChartsView } from "./charts-view";
 import { SUB_VIEWS, type SubView } from "@/lib/analytics/query-params.ts";
 
 /*
@@ -42,7 +43,11 @@ export function CampaignTab() {
       </div>
 
       <div className="flex-1 p-4">
-        <SubViewPlaceholder view={filters.view} />
+        {filters.view === "charts" ? (
+          <ChartsView />
+        ) : (
+          <SubViewPlaceholder view={filters.view} />
+        )}
       </div>
     </>
   );
