@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import { SCHEDULE_ENTRIES, dueJobs, minuteKey } from "./schedule.ts";
+import { SCHEDULE_ENTRIES, dueJobs, dueJobsSince, minuteKey } from "./schedule.ts";
 
 const entries = SCHEDULE_ENTRIES;
 
@@ -59,6 +59,33 @@ describe("sync schedule", () => {
       (e) => e.dailyAtUtcHour,
     );
     assert.equal(new Set(hours).size, hours.length, "two nightly jobs share an hour");
+  });
+
+  it("catches a job through the whole dispatch window, not just on the minute", () => {
+    // A Railway cron container for 06:00 typically evaluates at 06:00:40+.
+    // Exact-minute matching would miss every nightly job, every night.
+    const late = new Date(Date.UTC(2026, 6, 15, 6, 7, 12));
+    assert.ok(!dueJobs(late).includes("sync-steps"));
+    assert.ok(dueJobsSince(late, 10).includes("sync-steps"));
+  });
+
+  it("fires each scheduled minute in exactly one window", () => {
+    // Windows equal to the cron interval must tile the day: every job occurrence
+    // lands in one window, so nothing is skipped and nothing is double-fired.
+    const counts = new Map<string, number>();
+    for (let minute = 0; minute < 24 * 60; minute += 10) {
+      const at10 = new Date(Date.UTC(2026, 6, 15, 0, 0) + minute * 60_000);
+      for (const job of dueJobsSince(at10, 10)) {
+        counts.set(job, (counts.get(job) ?? 0) + 1);
+      }
+    }
+    assert.equal(counts.get("sync-replies"), 144); // 24h / 10min
+    assert.equal(counts.get("sync-entities"), 48);
+    assert.equal(counts.get("sync-daily-series"), 24);
+    assert.equal(counts.get("sync-day-stats"), 8); // every 3h
+    for (const entry of entries.filter((e) => e.dailyAtUtcHour !== undefined)) {
+      assert.equal(counts.get(entry.job), 1, `${entry.job} should fire exactly once a day`);
+    }
   });
 
   it("keys ticks by the minute", () => {

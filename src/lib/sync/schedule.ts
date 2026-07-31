@@ -98,6 +98,35 @@ export function dueJobs(
     .map((entry) => entry.job);
 }
 
+/**
+ * Every job that came due in the `windowMinutes` ending now.
+ *
+ * This is what a Railway cron dispatcher uses, and the window is not optional
+ * padding. `dueJobs` matches an exact minute, but a cron container does not
+ * start on the exact minute — Railway queues it, pulls the image and boots
+ * Node, so a job scheduled for 06:00 is typically evaluated at 06:00:40 or
+ * later. Matching on the wall clock at that point would miss every daily job,
+ * every time, and the symptom would be a nightly sweep that simply never ran.
+ *
+ * Call it with a window equal to the cron interval: each scheduled minute then
+ * falls in exactly one window, so nothing fires twice and nothing is skipped.
+ * A dispatch that is missed entirely is still a non-event — the jobs are
+ * idempotent and the next window re-covers whatever it can.
+ */
+export function dueJobsSince(
+  now: Date,
+  windowMinutes: number,
+  schedule: readonly ScheduleEntry[] = SCHEDULE,
+): string[] {
+  const due = new Set<string>();
+  for (let back = 0; back < windowMinutes; back++) {
+    for (const job of dueJobs(new Date(now.getTime() - back * 60_000), schedule)) {
+      due.add(job);
+    }
+  }
+  return [...due];
+}
+
 /** Stable key for "this minute", so a tick that fires twice only runs jobs once. */
 export function minuteKey(now: Date): number {
   return Math.floor(now.getTime() / 60_000);

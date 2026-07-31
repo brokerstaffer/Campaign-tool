@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { JOB_NAMES, getJob } from "@/lib/sync/jobs";
 import { runJob } from "@/lib/sync/runner";
+import { syncHealth } from "@/lib/sync/health";
 import { safeEqual } from "@/lib/auth";
 
 /*
@@ -8,15 +9,14 @@ import { safeEqual } from "@/lib/auth";
  * the auth check, the lock and the run-history write are the same for every job,
  * and duplicating them eight times is how one of them ends up unguarded.
  *
- * Schedule (Railway):
- *   sync-replies            every 10 min
- *   sync-entities           every 30 min
- *   sync-daily-series       hourly
- *   sync-reply-timing       hourly     (a draining work queue, capped at 500/run)
- *   sync-day-stats          every 3 h
- *   sync-steps              nightly
- *   sync-daily-series-deep  nightly    (drift repair against EB's own corrections)
- *   sync-day-stats-deep     nightly
+ * This is the trigger surface. Callers, in order of how often they fire:
+ *
+ *   - the Railway cron service, every 10 minutes, via scripts/cron-dispatch.mjs
+ *   - a human, by hand, when something needs re-running now
+ *
+ * The cadence itself lives in src/lib/sync/schedule.ts, not in Railway's UI,
+ * because the compiler checks it there: a job that is never scheduled is a
+ * build error. Nothing in this file knows or cares what the schedule is.
  *
  * Every job is idempotent, so a missed tick costs freshness and nothing else.
  * That is the property that let this app drop webhooks entirely.
@@ -48,6 +48,20 @@ export async function GET(
   }
 
   const { job } = await params;
+
+  /*
+   * `/api/cron/status` is health, not a job.
+   *
+   * It lives here rather than beside /api/sync/status so the cron dispatcher
+   * can read it with the bearer token it already holds — reusing this exact,
+   * already-verified auth check instead of opening a second authenticated
+   * surface for one caller. "status" is not and must not become a job name;
+   * JOB_NAMES is the registry, and this shadows anything added there.
+   */
+  if (job === "status") {
+    return NextResponse.json(await syncHealth(false));
+  }
+
   const fn = getJob(job);
   if (!fn) {
     return NextResponse.json(

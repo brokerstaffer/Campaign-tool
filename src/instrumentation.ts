@@ -1,23 +1,25 @@
 /*
- * Next's server-boot hook. This is where the sync scheduler starts.
+ * Next's server-boot hook, and the optional in-process scheduler.
  *
- * Two guards, both load-bearing:
- *   - NEXT_RUNTIME === "nodejs" — register() also runs for the Edge runtime,
- *     which has no setInterval semantics we want and no Supabase access.
- *   - ENABLE_SCHEDULER — off by default in development, so running `npm run dev`
- *     doesn't quietly start making thousands of EmailBison calls from a laptop.
- *     Set it to "0" in production to disable, e.g. while backfilling by hand.
+ * OFF BY DEFAULT. Scheduling is Railway cron: a cron service in this project
+ * runs scripts/cron-dispatch.mjs every 10 minutes and triggers whatever
+ * src/lib/sync/schedule.ts says is due. This ticker is the fallback for
+ * environments without a cron service — a laptop, a preview deploy, or Railway
+ * cron being down — and is enabled with ENABLE_SCHEDULER=1.
+ *
+ * Running both at once is safe, not merely tolerable: runJob holds a database
+ * lock, so whichever fires second is skipped. The default is off only because
+ * one active scheduler is easier to reason about than two.
+ *
+ * The NEXT_RUNTIME guard is load-bearing — register() also runs for the Edge
+ * runtime, which has neither the timer semantics we want nor Supabase access.
  */
 
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
-  const enabled = process.env.ENABLE_SCHEDULER
-    ? process.env.ENABLE_SCHEDULER !== "0"
-    : process.env.NODE_ENV === "production";
-
-  if (!enabled) {
-    console.log("[cron] scheduler disabled (set ENABLE_SCHEDULER=1 to run it)");
+  if (process.env.ENABLE_SCHEDULER !== "1") {
+    console.log("[cron] in-process scheduler off; Railway cron drives /api/cron/*");
     return;
   }
 
