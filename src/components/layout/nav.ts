@@ -1,4 +1,4 @@
-import { BarChart3, Mail, type LucideIcon } from "lucide-react";
+import { BarChart3, CalendarClock, Mail, type LucideIcon } from "lucide-react";
 
 /*
  * Two destinations, both real.
@@ -22,6 +22,9 @@ export interface NavItem {
 
 export const NAV: NavItem[] = [
   { label: "Campaigns", href: "/campaigns", icon: Mail },
+  // Spec §10 keeps the forecast as its own screen rather than a tab: it answers
+  // "what goes out next", which is a different question from "how did it do".
+  { label: "Schedule", href: "/schedule", icon: CalendarClock },
   { label: "Analytics", href: "/analytics/campaign", icon: BarChart3 },
 ];
 

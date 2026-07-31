@@ -297,6 +297,22 @@ export class EmailBisonClient {
     );
   }
 
+  /**
+   * The upcoming send forecast, all pages (§10).
+   *
+   * Paginated — 15 campaigns per page — so the single-page call this replaces
+   * would silently under-report the day's volume once the workspace grew past
+   * one page. It already has two.
+   */
+  async getAllSendingSchedules(
+    day: "today" | "tomorrow" | "day_after_tomorrow" = "today",
+  ): Promise<Array<{ campaign_id: number; emails_being_sent: number }>> {
+    return this.fetchAllPages<{ campaign_id: number; emails_being_sent: number }>(
+      "/api/campaigns/sending-schedules",
+      { day },
+    );
+  }
+
   async getSendingSchedules(
     day: "today" | "tomorrow" | "day_after_tomorrow" = "today",
   ) {
