@@ -31,6 +31,7 @@ export interface EBTag {
 export interface EBCampaign {
   id: number;
   uuid?: string;
+  sequence_id?: number;
   name: string;
   type?: string;
   status: string;
@@ -47,6 +48,13 @@ export interface EBCampaign {
   max_emails_per_day?: number;
   max_new_leads_per_day?: number;
   completion_percentage?: number;
+  // Settings, returned on every campaign list response.
+  plain_text?: boolean;
+  open_tracking?: boolean;
+  can_unsubscribe?: boolean;
+  unsubscribe_text?: string | null;
+  include_auto_replies_in_stats?: boolean;
+  sequence_prioritization?: string;
   tags?: Array<EBTag | string>;
   created_at?: string;
   updated_at?: string;

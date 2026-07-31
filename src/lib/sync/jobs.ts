@@ -79,6 +79,27 @@ export const syncEntities: JobFn = async ({ teamId }): Promise<JobResult> => {
       lifetime_emails_sent: c.emails_sent ?? null,
       eb_created_at: c.created_at ?? null,
       eb_updated_at: c.updated_at ?? null,
+      // Settings and the lifetime funnel arrive on the same list response, so
+      // caching them is free and turns the detail page into one indexed read.
+      sequence_id: c.sequence_id ?? null,
+      max_new_leads_per_day: c.max_new_leads_per_day ?? null,
+      plain_text: c.plain_text ?? null,
+      open_tracking: c.open_tracking ?? null,
+      can_unsubscribe: c.can_unsubscribe ?? null,
+      unsubscribe_text: c.unsubscribe_text ?? null,
+      include_auto_replies_in_stats: c.include_auto_replies_in_stats ?? null,
+      sequence_prioritization: c.sequence_prioritization ?? null,
+      completion_percentage: c.completion_percentage ?? null,
+      // Cumulative counters. Overview shows them as lifetime totals and says
+      // so — never use them for anything date-ranged.
+      lifetime_opened: c.opened ?? null,
+      lifetime_unique_opens: c.unique_opens ?? null,
+      lifetime_replied: c.replied ?? null,
+      lifetime_unique_replies: c.unique_replies ?? null,
+      lifetime_bounced: c.bounced ?? null,
+      lifetime_unsubscribed: c.unsubscribed ?? null,
+      lifetime_interested: c.interested ?? null,
+      total_leads_contacted: c.total_leads_contacted ?? null,
       synced_at: new Date().toISOString(),
     })),
     "id",
