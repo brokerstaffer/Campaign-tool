@@ -21,6 +21,16 @@
  * the longest sweep.
  *
  * Required environment: APP_URL, CRON_SECRET.
+ *
+ * Run it as:
+ *   node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/cron-dispatch.mjs
+ *
+ * The import below is a .ts file, which Node 24 strips natively — the same
+ * trick that lets `npm test` run against .ts with no build step. Node warns
+ * that it had to reparse it as ESM to work that out. Adding "type": "module"
+ * to package.json would silence it too, but that flag changes how every file in
+ * a Next.js project is interpreted, which is a large blast radius for a log
+ * line. Suppressing the one warning is the smaller change.
  */
 
 import { dueJobsSince } from "../src/lib/sync/schedule.ts";
