@@ -47,7 +47,7 @@ function toHex(buffer: ArrayBuffer): string {
  * Constant-time string comparison. `a === b` short-circuits on the first
  * differing byte, which leaks how much of a forged signature was correct.
  */
-function safeEqual(a: string, b: string): boolean {
+export function safeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);

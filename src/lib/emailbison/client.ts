@@ -233,6 +233,27 @@ export class EmailBisonClient {
     );
   }
 
+  /**
+   * Tracked replies for ONE campaign.
+   *
+   * This, not `/api/replies`, is the reply source. `/api/replies` is the master
+   * inbox: ~1.9M rows, 959K of them our own outbound, most with campaign_id
+   * NULL. The campaign-scoped feed returns only genuine tracked replies with a
+   * real campaign_id and lead_id.
+   */
+  async getCampaignRepliesPage(campaignId: number, page = 1, perPage = 100) {
+    return this.request<Paginated<EBReply>>(
+      `/api/campaigns/${campaignId}/replies?page=${page}&per_page=${perPage}`,
+    );
+  }
+
+  /** Sends made to one lead — the source for first_send_at (Median Reply Time). */
+  async getLeadSentEmails(leadId: number) {
+    return this.request<{ data?: Array<Record<string, unknown>> }>(
+      `/api/leads/${leadId}/sent-emails`,
+    );
+  }
+
   /** Both reply timings in one call. See the Q16 note in types.ts. */
   async getConversationThread(replyId: number) {
     return this.request<EBConversationThread>(

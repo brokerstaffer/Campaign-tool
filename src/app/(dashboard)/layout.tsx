@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { AUTH_COOKIE, verifySessionToken } from "@/lib/auth";
 import { Providers } from "@/components/providers";
 import { Sidebar } from "@/components/layout/sidebar";
+import { StalenessStrip } from "@/components/layout/staleness-strip";
 
 export default async function DashboardLayout({
   children,
@@ -22,6 +23,7 @@ export default async function DashboardLayout({
       <div className="flex h-screen w-screen overflow-hidden bg-background">
         <Sidebar email={session?.email ?? ""} />
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <StalenessStrip />
           {children}
         </main>
       </div>
