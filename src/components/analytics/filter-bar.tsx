@@ -1,10 +1,12 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { useAnalyticsFilters } from "./filters-context";
 import { QuickRangePills } from "./quick-range-pills";
 import { RangePicker } from "./range-picker";
+import { MultiSelect, type Option } from "./multi-select";
 import { rangeLabel } from "@/lib/analytics/format.ts";
 import { comparePeriod } from "@/lib/analytics/query-params.ts";
 
@@ -12,13 +14,22 @@ import { comparePeriod } from "@/lib/analytics/query-params.ts";
  * The filter bar. Present on every analytics tab; whatever is set here applies
  * to every number and chart on the page.
  *
- * P0 ships the range controls and Compare previous — everything that needs no
- * data. The Campaigns and Clients multiselects arrive in P1 with
- * /api/analytics/filters, because a picker with nothing to pick is worse than
- * no picker.
+ * Whatever is set here applies to every number and chart on the page, and all
+ * of it lives in the URL — so any view is a shareable link and the back button
+ * steps through filter changes.
  */
 export function FilterBar() {
   const { filters, setFilters } = useAnalyticsFilters();
+
+  const { data: options } = useQuery<{ campaigns: Option[]; clients: Option[] }>({
+    queryKey: ["filter-options"],
+    queryFn: async () => {
+      const r = await fetch("/api/analytics/filters");
+      if (!r.ok) throw new Error("Failed to load filter options");
+      return r.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
   const compare = filters.compare
     ? comparePeriod(filters.from, filters.to)
@@ -31,6 +42,24 @@ export function FilterBar() {
       <Separator orientation="vertical" className="h-4" />
 
       <RangePicker />
+
+      <Separator orientation="vertical" className="h-4" />
+
+      <MultiSelect
+        label="Campaigns"
+        options={options?.campaigns ?? []}
+        selected={filters.campaignIds.map(String)}
+        onChange={(next) => setFilters({ campaignIds: next.map(Number) })}
+        emptyText="No campaigns found"
+      />
+
+      <MultiSelect
+        label="Clients"
+        options={options?.clients ?? []}
+        selected={filters.clientIds}
+        onChange={(clientIds) => setFilters({ clientIds })}
+        emptyText="No clients found"
+      />
 
       <Separator orientation="vertical" className="h-4" />
 
