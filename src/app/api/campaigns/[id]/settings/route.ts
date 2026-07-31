@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { AUTH_COOKIE, verifySessionToken } from "@/lib/auth";
-import { createEmailBisonClient, EmailBisonApiError } from "@/lib/emailbison/client.ts";
+import { createEmailBisonClient } from "@/lib/emailbison/client.ts";
+import { describeEmailBisonError } from "@/lib/emailbison/errors.ts";
 import { getSupabase } from "@/lib/supabase/server";
 
 /*
@@ -39,6 +40,25 @@ const Settings = z
   })
   .partial()
   .refine((v) => Object.keys(v).length > 0, { message: "No settings supplied" });
+
+/*
+ * EmailBison enforces max_emails_per_day >= max_new_leads_per_day and rejects
+ * the whole update with a 422 otherwise. Checking it here too is not
+ * duplication for its own sake: the form usually sends only the field that
+ * changed, so lowering the send limit alone would be rejected for a reason that
+ * mentions a field the user never touched.
+ */
+function crossFieldError(
+  merged: { max_emails_per_day?: number | null; max_new_leads_per_day?: number | null },
+): string | null {
+  const emails = merged.max_emails_per_day;
+  const leads = merged.max_new_leads_per_day;
+  if (emails == null || leads == null) return null;
+  return emails >= leads
+    ? null
+    : `Daily send limit (${emails}) must be at least the new-leads-per-day limit (${leads}). ` +
+        `Lower new leads per day first, or raise the send limit.`;
+}
 
 /** Only the columns that exist locally, named as they are in our schema. */
 const COLUMN_OF: Record<string, string> = {
@@ -112,15 +132,16 @@ export async function PATCH(
     return NextResponse.json({ ok: true, changed: {}, note: "No values differed" });
   }
 
+  // Validate against the campaign as it WOULD be, not against the patch alone.
+  const conflict = crossFieldError({ ...before, ...changed } as Record<string, number | null>);
+  if (conflict) {
+    return NextResponse.json({ error: conflict }, { status: 422 });
+  }
+
   try {
     await createEmailBisonClient().updateCampaign(campaignId, changed);
   } catch (error) {
-    const message =
-      error instanceof EmailBisonApiError
-        ? describe(error)
-        : error instanceof Error
-          ? error.message
-          : String(error);
+    const message = describeEmailBisonError(error);
 
     await sb.from("campaign_audit_log").insert({
       team_id: teamId,
@@ -164,15 +185,3 @@ function pick(source: Record<string, unknown>, keys: string[]) {
   return Object.fromEntries(keys.map((k) => [k, source[k]]));
 }
 
-function describe(error: EmailBisonApiError): string {
-  const body = error.response;
-  if (body && typeof body === "object") {
-    const record = body as Record<string, unknown>;
-    if (typeof record.message === "string" && record.message) return record.message;
-    if (record.errors && typeof record.errors === "object") {
-      const first = Object.values(record.errors as Record<string, unknown>)[0];
-      if (Array.isArray(first) && typeof first[0] === "string") return first[0];
-    }
-  }
-  return error.message;
-}

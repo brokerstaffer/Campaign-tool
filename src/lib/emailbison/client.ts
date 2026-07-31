@@ -1,4 +1,8 @@
 import { limited } from "./rate-limit.ts";
+import { assertApplied, EmailBisonApiError } from "./errors.ts";
+
+// Re-exported so existing importers keep working.
+export { EmailBisonApiError } from "./errors.ts";
 import type {
   EBCampaign,
   EBCampaignStats,
@@ -25,18 +29,6 @@ import type {
  * before throwing, and the `{data: ...}` unwrap guard on single-resource GETs
  * (EmailBison is inconsistent about wrapping).
  */
-
-export class EmailBisonApiError extends Error {
-  constructor(
-    message: string,
-    public statusCode: number,
-    public response?: unknown,
-    public retryAfterMs?: number,
-  ) {
-    super(message);
-    this.name = "EmailBisonApiError";
-  }
-}
 
 function retryPolicy(error: unknown) {
   if (!(error instanceof EmailBisonApiError)) {
@@ -95,7 +87,20 @@ export class EmailBisonClient {
         );
       }
 
-      return response.json() as Promise<T>;
+      // Some writes answer 200 with an empty body (pause is one). Treat an
+      // unparseable body as "no payload" rather than failing an action that
+      // actually succeeded.
+      const payload = await response.json().catch(() => null);
+      /*
+       * A 2xx is not proof the change landed. EmailBison answers some writes
+       * with `success: false` in the body, and trusting the status alone would
+       * report those as applied — the exact silent failure spec §9.5 forbids,
+       * and the hardest kind to notice because the UI looks right while the
+       * sending platform never changed. Reads never carry `success`, so this
+       * costs them nothing.
+       */
+      assertApplied(payload, endpoint);
+      return payload as T;
     }, retryPolicy);
   }
 

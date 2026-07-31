@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createEmailBisonClient } from "@/lib/emailbison/client.ts";
-import { EmailBisonApiError } from "@/lib/emailbison/client.ts";
+import { describeEmailBisonError } from "@/lib/emailbison/errors.ts";
 import { getSupabase } from "@/lib/supabase/server";
 import { canApply, whyNot, type CampaignAction } from "./status.ts";
 
@@ -95,34 +95,15 @@ async function applyOne(
       after: action === "duplicate" ? null : status,
     };
   } catch (error) {
-    // EmailBisonApiError carries the platform's own body. That is what §9.5
-    // requires be shown — not "something went wrong".
-    const message =
-      error instanceof EmailBisonApiError
-        ? describe(error)
-        : error instanceof Error
-          ? error.message
-          : String(error);
+    // The platform's own words — §9.5 requires the actual reason, and
+    // EmailBison nests it under `data`.
+    const message = describeEmailBisonError(error);
 
     return {
       result: { campaignId: campaign.id, name: campaign.name, ok: false, error: message },
       after: null,
     };
   }
-}
-
-/** Pulls the human-readable reason out of EmailBison's error body. */
-function describe(error: EmailBisonApiError): string {
-  const body = error.response;
-  if (body && typeof body === "object") {
-    const record = body as Record<string, unknown>;
-    if (typeof record.message === "string" && record.message) return record.message;
-    if (record.errors && typeof record.errors === "object") {
-      const first = Object.values(record.errors as Record<string, unknown>)[0];
-      if (Array.isArray(first) && typeof first[0] === "string") return first[0];
-    }
-  }
-  return error.message;
 }
 
 /**
