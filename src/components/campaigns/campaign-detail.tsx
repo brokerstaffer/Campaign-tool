@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmailPanel } from "@/components/analytics/email-panel";
+import { CopySequenceDialog } from "@/components/campaigns/copy-sequence-dialog";
 import { fullNumber, percent } from "@/lib/analytics/format.ts";
 import { STATUS_TONE, canApply, isKnownStatus } from "@/lib/campaigns/status.ts";
 import { cn } from "@/lib/utils";
@@ -275,7 +276,9 @@ export function CampaignDetail({ id }: { id: number }) {
 
       <div className="min-h-0 flex-1 overflow-auto p-6">
         {tab === "Overview" ? <Overview campaign={campaign} /> : null}
-        {tab === "Sequence" ? <Sequence steps={sequence} /> : null}
+        {tab === "Sequence" ? (
+          <Sequence steps={sequence} campaignId={campaign.id} campaignName={campaign.name} />
+        ) : null}
         {tab === "Settings" ? <Settings campaign={campaign} /> : null}
         {tab === "Activity" ? <ActivityLog rows={activity} /> : null}
       </div>
@@ -435,19 +438,47 @@ function StepStatsRow({ stats }: { stats: StepStats | null }) {
   );
 }
 
-function Sequence({ steps }: { steps: Step[] }) {
+function Sequence({
+  steps,
+  campaignId,
+  campaignName,
+}: {
+  steps: Step[];
+  campaignId: number;
+  campaignName: string;
+}) {
   const [open, setOpen] = useState<number | null>(steps[0]?.id ?? null);
+  const [copying, setCopying] = useState(false);
+
+  const copyButton = (
+    <>
+      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setCopying(true)}>
+        Copy sequence from…
+      </Button>
+      <CopySequenceDialog
+        targetId={campaignId}
+        targetName={campaignName}
+        open={copying}
+        onOpenChange={setCopying}
+      />
+    </>
+  );
 
   if (!steps.length) {
     return (
-      <p className="text-sm text-muted-foreground">
-        No sequence steps cached. Run sync-steps if this campaign has a sequence.
-      </p>
+      <div className="max-w-4xl space-y-3">
+        <p className="text-sm text-muted-foreground">
+          This campaign has no sequence steps cached. Run sync-steps if it has one upstream, or
+          copy a sequence from another campaign.
+        </p>
+        {copyButton}
+      </div>
     );
   }
 
   return (
     <div className="max-w-4xl space-y-2">
+      <div className="flex justify-end pb-1">{copyButton}</div>
       {steps.map((step, index) => (
         <div key={step.id} className="rounded-lg border">
           <button

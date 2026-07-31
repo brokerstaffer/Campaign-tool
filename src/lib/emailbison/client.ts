@@ -258,6 +258,39 @@ export class EmailBisonClient {
     });
   }
 
+  /**
+   * Appends steps. Existing ones are untouched — there is no call that
+   * replaces a sequence, which is why Replace has to delete first.
+   */
+  async createSequenceSteps(
+    campaignId: number,
+    title: string,
+    steps: Array<Record<string, unknown>>,
+  ) {
+    return this.request<EBSequenceStepsResponse>(
+      `/api/campaigns/v1.1/${campaignId}/sequence-steps`,
+      { method: "POST", body: JSON.stringify({ title, sequence_steps: steps }) },
+    );
+  }
+
+  /** Updates ONLY the steps listed, each of which must carry its `id`. */
+  async updateSequenceSteps(
+    sequenceId: number,
+    title: string,
+    steps: Array<Record<string, unknown>>,
+  ) {
+    return this.request<EBSequenceStepsResponse>(
+      `/api/campaigns/v1.1/sequence-steps/${sequenceId}`,
+      { method: "PUT", body: JSON.stringify({ title, sequence_steps: steps }) },
+    );
+  }
+
+  async deleteSequenceStep(stepId: number) {
+    return this.request<unknown>(`/api/campaigns/sequence-steps/${stepId}`, {
+      method: "DELETE",
+    });
+  }
+
   async getCampaignSequenceSteps(id: number) {
     return this.request<EBSequenceStepsResponse>(
       `/api/campaigns/v1.1/${id}/sequence-steps`,
