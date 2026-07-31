@@ -56,6 +56,30 @@ export async function GET(
     );
   }
 
+  /*
+   * `?detach=1` starts the job and answers immediately.
+   *
+   * Railway's edge times a request out well before a deep sweep finishes, so
+   * triggering one by hand returns a 502 even though the run completes fine
+   * server-side — misleading, and it makes an actual failure indistinguishable
+   * from a slow success. The in-process scheduler never hits this because it
+   * doesn't go through HTTP at all; only manual triggers do.
+   *
+   * Safe because this is a long-lived Node process, not a serverless function:
+   * work continues after the response is written. The outcome lands in
+   * `sync_runs`, which is where /api/sync/status reads it from.
+   */
+  const url = new URL(request.url);
+  if (url.searchParams.get("detach") === "1") {
+    void runJob(job, TEAM_ID, fn).catch((error) =>
+      console.error(`[cron] ${job} (detached) threw:`, error),
+    );
+    return NextResponse.json(
+      { job, status: "started", detached: true, followUp: "/api/sync/status" },
+      { status: 202 },
+    );
+  }
+
   const outcome = await runJob(job, TEAM_ID, fn);
 
   // A failed job returns 500 so the scheduler's own alerting sees it; a skipped

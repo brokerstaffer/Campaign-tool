@@ -18,7 +18,28 @@ import { getSupabase } from "@/lib/supabase/server";
  *     every 10 minutes helps nobody; `last_error` is left in place to explain.
  */
 
-const STALE_LOCK_MS = 30 * 60 * 1000;
+/*
+ * How long a lock is honoured before it's assumed to belong to a dead process.
+ *
+ * Every redeploy kills whatever was mid-sweep, so this is not an edge case —
+ * it happens on every deploy, and it is the only thing standing between a
+ * killed run and a job that never runs again.
+ *
+ * Ten minutes is calibrated against what these jobs actually take. Measured in
+ * production: entities 9s, steps 13s, daily-series 14s (deep 31s), replies 16s
+ * (deep 60s), day-stats 26s (deep 102s), reply-timing 122-212s. The slowest is
+ * under four minutes, so ten is a wide margin.
+ *
+ * Getting it too short costs a duplicate run — extra EmailBison calls, and
+ * nothing else, because every job is idempotent. Getting it too long means a
+ * dead job stays dead: at the old 30 minutes, a deploy landing mid-sweep cost
+ * the 10-minute reply sync three consecutive ticks.
+ *
+ * Releasing locks on SIGTERM would be better than any timeout, but Next
+ * installs its own signal handler that calls process.exit(0), and its
+ * cleanup-listener hook is dev-only — an async release can't reliably finish.
+ */
+const STALE_LOCK_MS = 10 * 60 * 1000;
 const MAX_FAILURES = 5;
 
 export interface JobResult {
@@ -71,6 +92,26 @@ export async function runJob(
       return { job: jobName, status: "skipped", durationMs: 0, error: "already running" };
     }
     console.warn(`[cron] ${jobName}: stealing a stale lock (${Math.round(age / 1000)}s old)`);
+
+    /*
+     * Reap the run the dead process left open.
+     *
+     * A container replaced mid-sweep — which is what every redeploy does —
+     * leaves a `sync_runs` row with a NULL finished_at that nothing else ever
+     * closes. Left alone the history reads as "that job is still running",
+     * indefinitely, which is precisely the state you'd be looking at the
+     * history to rule out.
+     */
+    await sb
+      .from("sync_runs")
+      .update({
+        finished_at: new Date().toISOString(),
+        status: "abandoned",
+        error: "process exited mid-run (lock stolen after staleness timeout)",
+      })
+      .eq("job_name", jobName)
+      .eq("team_id", teamId)
+      .is("finished_at", null);
   }
 
   if ((state?.consecutive_failures ?? 0) >= MAX_FAILURES) {
