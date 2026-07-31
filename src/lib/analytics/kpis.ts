@@ -64,6 +64,7 @@ interface RpcRow {
 
 function derive(
   row: RpcRow | undefined,
+  prospects: number | null,
   medianReply: number | null,
   medianFollowUp: number | null,
 ): KpiValues {
@@ -75,7 +76,9 @@ function derive(
 
   return {
     sent,
-    prospects: Number(row?.prospects ?? 0),
+    // NOT row.prospects -- that column sums daily distinct counts and
+    // overcounts. See fetchProspects().
+    prospects: prospects ?? 0,
     replies,
     humanReplies,
     positive,
@@ -88,6 +91,70 @@ function derive(
     leadToEmail: leadToEmail(sent, positive),
     bounceRate: bounceRate(bounces, sent),
   };
+}
+
+/**
+ * Prospects = DISTINCT leads contacted in the range.
+ *
+ * This CANNOT be a sum of the daily values. `total_leads_contacted` is itself a
+ * distinct count per day, so a lead emailed on eight days contributes eight
+ * times. Over 62 days that inflated Prospects to ~= Sent, which is nonsense.
+ *
+ * EmailBison computes the distinct count correctly for any range, so ask it
+ * once. Unfiltered that is a single workspace call; filtered it is one call per
+ * selected campaign, which is why the campaign picker should stay narrow.
+ *
+ * Note the residual caveat when filtering: per-campaign distinct counts still
+ * double-count a lead that appears in two selected campaigns. EmailBison
+ * exposes no cross-campaign distinct count, so that is a genuine upstream
+ * limit, not something to paper over.
+ */
+async function fetchProspects(
+  from: string,
+  to: string,
+  campaignIds: number[],
+): Promise<number | null> {
+  const base = process.env.EMAILBISON_BASE_URL;
+  const key = process.env.EMAILBISON_API_KEY;
+  if (!base || !key) return null;
+
+  const headers = {
+    Authorization: `Bearer ${key}`,
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+
+  try {
+    if (campaignIds.length === 0) {
+      const response = await fetch(
+        `${base}/api/workspaces/v1.1/stats?start_date=${from}&end_date=${to}`,
+        { headers, cache: "no-store" },
+      );
+      if (!response.ok) return null;
+      const body = await response.json();
+      return Number(body?.data?.total_leads_contacted ?? 0);
+    }
+
+    // Cap the fan-out: beyond this the latency is worse than the precision is
+    // worth, and the caller is better served by a narrower filter.
+    const targets = campaignIds.slice(0, 25);
+    const results = await Promise.all(
+      targets.map(async (id) => {
+        const response = await fetch(`${base}/api/campaigns/${id}/stats`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ start_date: from, end_date: to }),
+          cache: "no-store",
+        });
+        if (!response.ok) return 0;
+        const body = await response.json();
+        return Number(body?.data?.total_leads_contacted ?? 0);
+      }),
+    );
+    return results.reduce((total, n) => total + n, 0);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -142,11 +209,12 @@ export async function loadKpis(
     p_client_ids: filters.clientIds.length ? filters.clientIds : null,
   };
 
-  const [counts, timing, followUp, previousTiming, previousFollowUp] =
+  const [counts, timing, followUp, prospects, previousTiming, previousFollowUp, previousProspects] =
     await Promise.all([
       sb.rpc("analytics_kpis", { ...args, p_compare: filters.compare }),
       sb.rpc("analytics_reply_timing", args),
       fetchFollowUpTime(filters.from, filters.to),
+      fetchProspects(filters.from, filters.to, filters.campaignIds),
       filters.compare && filters.compareFrom && filters.compareTo
         ? sb.rpc("analytics_reply_timing", {
             ...args,
@@ -156,6 +224,9 @@ export async function loadKpis(
         : Promise.resolve(null),
       filters.compare && filters.compareFrom && filters.compareTo
         ? fetchFollowUpTime(filters.compareFrom, filters.compareTo)
+        : Promise.resolve(null),
+      filters.compare && filters.compareFrom && filters.compareTo
+        ? fetchProspects(filters.compareFrom, filters.compareTo, filters.campaignIds)
         : Promise.resolve(null),
     ]);
 
@@ -170,6 +241,7 @@ export async function loadKpis(
 
   const current = derive(
     currentRow,
+    prospects,
     medianReply === null ? null : Number(medianReply),
     followUp.seconds,
   );
@@ -187,6 +259,7 @@ export async function loadKpis(
     const previousMedian = previousTiming?.data?.[0]?.median_reply_seconds ?? null;
     const previous = derive(
       previousRow,
+      previousProspects,
       previousMedian === null ? null : Number(previousMedian),
       previousFollowUp?.seconds ?? null,
     );
