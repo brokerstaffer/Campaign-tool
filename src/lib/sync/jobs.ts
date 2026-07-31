@@ -479,8 +479,14 @@ export const syncReplyTiming: JobFn = async ({ teamId }): Promise<JobResult> => 
     .eq("team_id", teamId)
     .is("timing_synced_at", null)
     .not("lead_id", "is", null)
+    // Newest first: a fresh reply's timing matters more than a three-month-old
+    // one's, and the backlog drains from the useful end.
+    //
+    // 1000/run is ~470 lead calls and ~4 minutes, which sits comfortably inside
+    // the hourly cadence. Steady state is ~120 new replies a day, so this cap
+    // only governs how fast an initial backlog clears.
     .order("date_received", { ascending: false })
-    .limit(500);
+    .limit(1000);
 
   if (!pending?.length) return { rowsWritten: 0, apiCalls: 0 };
 
