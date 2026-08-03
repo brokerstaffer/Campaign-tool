@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { EmailPanel } from "@/components/analytics/email-panel";
 import { countVariations } from "@/lib/spintax.ts";
+import { CopyTagsPanel } from "@/components/campaigns/copy-tags-panel";
 
 /*
  * The sequence editor (spec §9.3).
@@ -380,6 +381,11 @@ export function SequenceEditor({
                 <div>
                   <p className="mb-1 text-[11px] font-medium">Preview</p>
                   <EmailPanel subject={step.email_subject} body={step.email_body} />
+                </div>
+
+                {/* §6.3: "Tag the copy's seven dimensions from the same screen." */}
+                <div className="border-t pt-3">
+                  <CopyTagsPanel stepId={step.id ?? null} />
                 </div>
               </div>
             ) : null}
