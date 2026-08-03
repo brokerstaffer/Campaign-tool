@@ -1,0 +1,87 @@
+import { NextResponse, type NextRequest } from "next/server";
+import { getSupabase } from "@/lib/supabase/server";
+
+/*
+ * The sending estate (spec §8).
+ *
+ * Every number comes from an RPC, none from a `.select()` that the route then
+ * groups. There are 1,470 inboxes and PostgREST caps a select at 1000 rows and
+ * truncates silently — a by-domain rollup computed here would describe two
+ * thirds of the estate while looking entirely plausible. That is rule 7 in
+ * CLAUDE.md, and this is the table where it finally bites.
+ */
+
+export const dynamic = "force-dynamic";
+
+const TEAM_ID = () => Number(process.env.EMAILBISON_TEAM_ID || 2);
+
+/**
+ * Default floor for the problem-account view.
+ *
+ * A bounce rate over three sends is noise: one bounce is 33% and means nothing.
+ * 50 is low enough to catch a newly-warming inbox going bad and high enough
+ * that the list is worth reading.
+ */
+const DEFAULT_MIN_SENT = 50;
+
+export async function GET(request: NextRequest) {
+  const sb = getSupabase();
+  const teamId = TEAM_ID();
+  const params = request.nextUrl.searchParams;
+
+  const view = params.get("view") ?? "inbox"; // inbox | domain | provider
+  const search = params.get("q")?.trim() || null;
+  const sort = params.get("sort") ?? "sent"; // sent | bounce_rate | reply_rate
+  const minSent = Number(params.get("min_sent") ?? DEFAULT_MIN_SENT);
+  const limit = Math.min(Number(params.get("limit") ?? 100), 500);
+  const offset = Math.max(Number(params.get("offset") ?? 0), 0);
+
+  const [totals, rows, problems] = await Promise.all([
+    sb.rpc("analytics_sender_totals", { p_team_id: teamId }),
+
+    view === "inbox"
+      ? sb.rpc("analytics_sender_rows", {
+          p_team_id: teamId,
+          // The inbox list is not filtered by volume — you should be able to
+          // find an inbox that has never sent, which is itself a finding.
+          p_min_sent: 0,
+          p_search: search,
+          p_sort: sort,
+          p_limit: limit,
+          p_offset: offset,
+        })
+      : sb.rpc("analytics_sender_groups", {
+          p_team_id: teamId,
+          p_group: view,
+          p_min_sent: 0,
+        }),
+
+    // "Problem accounts surfaced by bounce rate, so a single bad inbox can be
+    // spotted before it drags a campaign down." Always computed, whatever the
+    // current view — it is the reason this page exists.
+    sb.rpc("analytics_sender_rows", {
+      p_team_id: teamId,
+      p_min_sent: minSent,
+      p_search: null,
+      p_sort: "bounce_rate",
+      p_limit: 10,
+      p_offset: 0,
+    }),
+  ]);
+
+  const failed = totals.error ?? rows.error ?? problems.error;
+  if (failed) {
+    return NextResponse.json({ error: failed.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    view,
+    totals: totals.data?.[0] ?? null,
+    rows: rows.data ?? [],
+    // `total_count` rides along on every row from the window function, so
+    // paging doesn't need a second count query.
+    total: view === "inbox" ? (rows.data?.[0]?.total_count ?? 0) : (rows.data?.length ?? 0),
+    problems: problems.data ?? [],
+    minSent,
+  });
+}

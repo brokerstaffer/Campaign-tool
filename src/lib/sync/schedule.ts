@@ -44,6 +44,9 @@ export const SCHEDULE = [
   { job: "sync-daily-series", everyMinutes: 60 },
   { job: "sync-reply-timing", everyMinutes: 60 },
   { job: "sync-day-stats", everyMinutes: 180 },
+  // ~98 calls; the Infrastructure tab's only source. Inbox health changes on
+  // the scale of hours, not minutes.
+  { job: "sync-senders", everyMinutes: 180 },
   { job: "sync-steps", dailyAtUtcHour: 6 },
   { job: "sync-daily-series-deep", dailyAtUtcHour: 7 },
   { job: "sync-day-stats-deep", dailyAtUtcHour: 8 },

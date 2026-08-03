@@ -87,12 +87,22 @@ export interface EBSenderEmail {
   id: number;
   name: string | null;
   email: string;
+  /** The provider: google_workspace_oauth, smtp, microsoft_oauth, … */
   type?: string;
   status?: string;
   daily_limit?: number;
+  warmup_enabled?: boolean;
+  // Lifetime counters, all on the list response.
   emails_sent_count?: number;
   bounced_count?: number;
+  total_replied_count?: number;
   unique_replied_count?: number;
+  unique_opened_count?: number;
+  total_opened_count?: number;
+  unsubscribed_count?: number;
+  interested_leads_count?: number;
+  total_leads_contacted_count?: number;
+  created_at?: string;
   tags?: EBTag[];
 }
 

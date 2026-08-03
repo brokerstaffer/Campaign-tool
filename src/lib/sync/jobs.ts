@@ -487,6 +487,51 @@ export function makeRepliesJob(overlapHours: number | null): JobFn {
   };
 }
 
+// --- sender emails (the Infrastructure tab) ---------------------------------
+
+export const syncSenders: JobFn = async ({ teamId }): Promise<JobResult> => {
+  const eb = createEmailBisonClient();
+  const senders = await eb.getAllSenderEmails();
+
+  const rows = senders.map((s) => ({
+    id: s.id,
+    team_id: teamId,
+    email: s.email,
+    name: s.name ?? null,
+    // Derived here, not stored upstream — it is the whole basis of the
+    // by-domain rollup, so it must be consistent for every row.
+    domain: s.email?.includes("@") ? s.email.split("@").pop()!.toLowerCase() : null,
+    provider: s.type ?? null,
+    status: s.status ?? null,
+    daily_limit: s.daily_limit ?? null,
+    warmup_enabled: s.warmup_enabled ?? null,
+    lifetime_sent: s.emails_sent_count ?? null,
+    lifetime_bounced: s.bounced_count ?? null,
+    lifetime_replied: s.total_replied_count ?? null,
+    unique_replied: s.unique_replied_count ?? null,
+    unique_opened: s.unique_opened_count ?? null,
+    lifetime_unsubscribed: s.unsubscribed_count ?? null,
+    interested_leads: s.interested_leads_count ?? null,
+    leads_contacted: s.total_leads_contacted_count ?? null,
+    eb_created_at: s.created_at ?? null,
+    synced_at: new Date().toISOString(),
+  }));
+
+  await chunkUpsert("sender_emails", rows, "id");
+
+  return {
+    rowsWritten: rows.length,
+    // 15 per page, so ~98 calls for the current estate. Cheap enough hourly,
+    // and it is the only source of the Infrastructure tab's numbers.
+    apiCalls: Math.ceil(rows.length / 15) + 1,
+    detail: {
+      senders: rows.length,
+      sending: rows.filter((r) => (r.lifetime_sent ?? 0) > 0).length,
+      domains: new Set(rows.map((r) => r.domain).filter(Boolean)).size,
+    },
+  };
+};
+
 // --- reply timing (Median Reply Time) ---------------------------------------
 
 export const syncReplyTiming: JobFn = async ({ teamId }): Promise<JobResult> => {
@@ -573,6 +618,7 @@ export const JOBS = {
   "sync-entities": syncEntities,
   "sync-steps": syncSteps,
   "sync-reply-timing": syncReplyTiming,
+  "sync-senders": syncSenders,
   // Frequent: usually one page per campaign.
   "sync-replies": makeRepliesJob(48),
   // Nightly: the full 600-call walk, which also repairs `interested` flips that
