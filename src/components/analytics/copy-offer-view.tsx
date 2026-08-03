@@ -14,6 +14,8 @@ import {
 import { useAnalyticsFilters } from "@/components/analytics/filters-context";
 import { CampaignPicker } from "@/components/analytics/campaign-picker";
 import { SyncButton } from "@/components/analytics/sync-button";
+import { CampaignMultiPicker } from "@/components/analytics/campaign-multi-picker";
+import { BulkDeployPanel, useBulkDeploy } from "@/components/analytics/bulk-deploy";
 import {
   COPY_DIMENSIONS, awardMedals, dimensionLabel, MEDAL_MIN_SENT,
 } from "@/lib/analytics/copy-dimensions.ts";
@@ -110,6 +112,7 @@ export function CopyOfferView() {
   const [dimensions, setDimensions] = useState<string[]>(["subject_line"]);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<OfferRow | null>(null);
+  const deploy = useBulkDeploy();
   const [deploying, setDeploying] = useState<OfferRow | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -175,6 +178,15 @@ export function CopyOfferView() {
           * cache was stale enough to have nothing to suggest, which is when you
           * need it most.
           */}
+        {/* The progress panel sits above everything and stays put while the
+            batch runs, so a failure is never scrolled out of view. */}
+        <BulkDeployPanel
+          batch={deploy.batch}
+          running={deploy.running}
+          onRetry={deploy.retryFailed}
+          onDismiss={deploy.dismiss}
+        />
+
         <header className="flex flex-wrap items-baseline gap-3">
           <h1 className="text-xl font-semibold tracking-tight">Copy &amp; Offer</h1>
           <p className="text-sm text-muted-foreground">
@@ -622,7 +634,11 @@ export function CopyOfferView() {
           setEditing(null);
         }}
       />
-      <DeployDialog offer={deploying} onClose={() => setDeploying(null)} />
+      <DeployDialog
+        offer={deploying}
+        onClose={() => setDeploying(null)}
+        onStart={deploy.start}
+      />
     </div>
   );
 }
@@ -736,108 +752,106 @@ function CreateOfferDialog({
  * when a target step has already sent, and the "Re:" prefix is not
  * double-applied. "One click" describes the effort, not the number of checks.
  */
-function DeployDialog({ offer, onClose }: { offer: OfferRow | null; onClose: () => void }) {
-  const [targetId, setTargetId] = useState<number | null>(null);
+function DeployDialog({
+  offer,
+  onClose,
+  onStart,
+}: {
+  offer: OfferRow | null;
+  onClose: () => void;
+  onStart: (batch: {
+    sourceCampaignId: number;
+    sourceLabel: string;
+    mode: "append" | "replace";
+    tasks: Array<{ campaignId: number; name: string; status: "pending" }>;
+  }) => void;
+}) {
+  const [targetIds, setTargetIds] = useState<number[]>([]);
   const [mode, setMode] = useState<"append" | "replace">("append");
 
-  /*
-   * Preview before apply, the same discipline as the §9.4 flow on the campaign
-   * page. Copying a sequence into a live campaign changes what real prospects
-   * receive, and "3 steps from X" is not something you can confirm against —
-   * you need the subjects, the waits, and for Replace what would be destroyed.
-   */
-  const plan = useQuery({
-    queryKey: ["copy-plan", offer?.offer_id, targetId, mode],
+  const campaigns = useQuery<{ items: Array<{ id: number; name: string }> }>({
+    queryKey: ["campaigns", "all", ""],
     queryFn: async () => {
-      const response = await fetch(`/api/campaigns/${targetId}/copy-sequence`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sourceCampaignId: offer!.source!.source_campaign_id,
-          mode,
-          includeVariants: true,
-          includeAttachments: true,
-          apply: false,
-        }),
-      });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error ?? "Could not build the preview");
-      return body.plan as {
-        steps: Array<{
-          order: number;
-          subject: string | null;
-          waitInDays: number | null;
-          threadReply: boolean;
-          isVariant: boolean;
-          opening: string | null;
-        }>;
-        removing: Array<{ order: number; subject: string | null }>;
-        blocked: boolean;
-        warnings: string[];
-      };
+      const response = await fetch("/api/campaigns?status=all");
+      if (!response.ok) throw new Error("Failed to load campaigns");
+      return response.json();
     },
-    enabled: Boolean(offer?.source && targetId),
+    enabled: Boolean(offer),
+    staleTime: 60_000,
   });
 
-  const deploy = useMutation({
-    mutationFn: async () => {
-      const response = await fetch(`/api/campaigns/${targetId}/copy-sequence`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sourceCampaignId: offer!.source!.source_campaign_id,
-          mode,
-          includeVariants: true,
-          includeAttachments: true,
-          apply: true,
+  /*
+   * Preview every selected target, not just the first.
+   *
+   * With Replace the answer differs per campaign — one may have nothing to
+   * delete while the next has a step that has already sent and cannot be
+   * touched. A single preview would be a confident answer about the wrong
+   * campaign.
+   */
+  const plans = useQuery({
+    queryKey: ["copy-plan-many", offer?.offer_id, targetIds, mode],
+    queryFn: async () => {
+      const results = await Promise.all(
+        targetIds.map(async (targetId) => {
+          const response = await fetch(`/api/campaigns/${targetId}/copy-sequence`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sourceCampaignId: offer!.source!.source_campaign_id,
+              mode,
+              includeVariants: true,
+              includeAttachments: true,
+              apply: false,
+            }),
+          });
+          const body = await response.json().catch(() => ({}));
+          return {
+            targetId,
+            ok: response.ok,
+            plan: body.plan as
+              | { steps: unknown[]; removing: unknown[]; blocked: boolean; warnings: string[] }
+              | undefined,
+            error: body.error as string | undefined,
+          };
         }),
-      });
-      const body = await response.json();
-      if (!response.ok) {
-        throw new Error(
-          body.targetLeftEmpty
-            ? `${body.error}\n\nThat campaign now has NO sequence. Its previous steps are in its Activity tab.`
-            : (body.error ?? "The copy could not be applied"),
-        );
-      }
-      return body;
+      );
+      return results;
     },
-    onSuccess: onClose,
+    enabled: Boolean(offer?.source) && targetIds.length > 0,
   });
 
   if (!offer) return null;
 
-  const blocked = Boolean(plan.data?.blocked);
+  const nameOf = (id: number) =>
+    campaigns.data?.items.find((c) => c.id === id)?.name ?? `#${id}`;
+
+  const blocked = (plans.data ?? []).filter((p) => p.plan?.blocked || !p.ok);
+  const ready = (plans.data ?? []).filter((p) => p.ok && !p.plan?.blocked);
+  const stepsEach = ready[0]?.plan?.steps.length ?? offer.source?.step_count ?? 0;
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-lg [&>*]:min-w-0">
         <DialogHeader>
-          <DialogTitle>Copy &ldquo;{offer.offer_name}&rdquo; to a campaign</DialogTitle>
+          <DialogTitle>Copy &ldquo;{offer.offer_name}&rdquo; to campaigns</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3 text-sm">
+        <div className="min-w-0 space-y-3 text-sm">
           <p className="text-xs text-muted-foreground">
             {offer.source?.step_count} steps from{" "}
             <span className="text-foreground">{offer.source?.source_name}</span>
           </p>
 
-          <label className="block">
-            <span className="text-xs font-medium">Target campaign</span>
+          <div>
+            <span className="text-xs font-medium">Target campaigns</span>
             <div className="mt-1">
-              <CampaignPicker
-                value={targetId}
-                onChange={(id) => {
-                  setTargetId(id);
-                  // A stale failure from the previous target or mode must not
-                  // sit under the new one. That is what made an Append display
-                  // a "cannot be deleted" error left over from a Replace.
-                  deploy.reset();
-                }}
+              <CampaignMultiPicker
+                value={targetIds}
+                onChange={setTargetIds}
                 exclude={offer.source?.source_campaign_id ?? null}
               />
             </div>
-          </label>
+          </div>
 
           <div className="flex gap-3 text-xs">
             {(["append", "replace"] as const).map((m) => (
@@ -845,10 +859,7 @@ function DeployDialog({ offer, onClose }: { offer: OfferRow | null; onClose: () 
                 <input
                   type="radio"
                   checked={mode === m}
-                  onChange={() => {
-                    setMode(m);
-                    deploy.reset();
-                  }}
+                  onChange={() => setMode(m)}
                   className="accent-foreground"
                 />
                 <span className="capitalize">{m}</span>
@@ -856,79 +867,43 @@ function DeployDialog({ offer, onClose }: { offer: OfferRow | null; onClose: () 
             ))}
           </div>
 
-          {plan.isFetching ? (
+          {plans.isFetching ? (
             <p className="flex items-center gap-2 text-xs text-muted-foreground">
               <Loader2 className="size-3 animate-spin" />
-              Checking the target…
+              Checking {targetIds.length} {targetIds.length === 1 ? "campaign" : "campaigns"}…
             </p>
           ) : null}
 
-          {plan.data?.warnings.map((warning, i) => (
-            <p
-              key={i}
-              className="rounded-md border border-amber-300/60 bg-amber-50 p-2 text-xs text-amber-900"
-            >
-              {warning}
+          {ready.length ? (
+            <p className="rounded-md border bg-muted/40 p-2 text-xs">
+              <strong className="font-medium">{ready.length}</strong> ready ·{" "}
+              {stepsEach} steps each
+              {mode === "replace"
+                ? ` · ${ready.reduce((n, p) => n + (p.plan?.removing.length ?? 0), 0)} existing steps will be deleted`
+                : ""}
             </p>
-          ))}
+          ) : null}
 
-          {plan.data?.removing.length ? (
+          {/*
+            * Named, not counted. "3 will fail" tells you to go and find out
+            * which; listing them with the reason is the whole point.
+            */}
+          {blocked.length ? (
             <div>
-              <p className="mb-1 text-xs font-medium text-red-800">
-                Will be deleted ({plan.data.removing.length})
+              <p className="mb-1 text-xs font-medium text-[#b02525]">
+                {blocked.length} will be skipped
               </p>
-              <ul className="max-h-20 space-y-0.5 overflow-y-auto rounded-md border border-red-300/60 bg-red-50/50 p-2 text-xs">
-                {plan.data.removing.map((step, i) => (
-                  <li key={i} className="truncate line-through">
-                    {step.order}. {step.subject || "(no subject)"}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          {plan.data?.steps.length ? (
-            <div>
-              <p className="mb-1 text-xs font-medium">Will be added ({plan.data.steps.length})</p>
-              <ul className="max-h-52 space-y-1.5 overflow-y-auto rounded-md border p-2 text-xs">
-                {plan.data.steps.map((step, i) => (
-                  <li key={i}>
-                    <span className="flex items-baseline gap-2">
-                      <span className="tnum shrink-0 text-muted-foreground">{step.order}.</span>
-                      <span className="min-w-0 flex-1 truncate">
-                        {step.subject || "(no subject)"}
-                      </span>
-                      {step.threadReply ? (
-                        <span className="shrink-0 rounded border px-1 text-[10px]">thread</span>
-                      ) : null}
-                      {step.isVariant ? (
-                        <span className="shrink-0 rounded border px-1 text-[10px]">variant</span>
-                      ) : null}
-                      <span className="tnum shrink-0 text-muted-foreground">
-                        {step.waitInDays ? `${step.waitInDays}d` : "immediate"}
-                      </span>
+              <ul className="max-h-28 space-y-1 overflow-y-auto rounded-md border border-red-300/60 bg-red-50/50 p-2 text-xs">
+                {blocked.map((p) => (
+                  <li key={p.targetId}>
+                    <span className="block truncate font-medium">{nameOf(p.targetId)}</span>
+                    <span className="block text-[#b02525]">
+                      {p.error ?? p.plan?.warnings[0] ?? "Cannot be written to"}
                     </span>
-                    {step.opening ? (
-                      <span className="block truncate pl-6 text-[11px] text-muted-foreground">
-                        {step.opening}
-                      </span>
-                    ) : null}
                   </li>
                 ))}
               </ul>
             </div>
-          ) : null}
-
-          {plan.error ? (
-            <p className="rounded-md border border-red-300/60 bg-red-50 p-2 text-xs text-red-800">
-              {(plan.error as Error).message}
-            </p>
-          ) : null}
-
-          {deploy.error ? (
-            <p className="whitespace-pre-line rounded-md border border-red-300/60 bg-red-50 p-2 text-xs text-red-800">
-              {deploy.error.message}
-            </p>
           ) : null}
         </div>
 
@@ -938,14 +913,27 @@ function DeployDialog({ offer, onClose }: { offer: OfferRow | null; onClose: () 
           </Button>
           <Button
             size="sm"
-            variant={plan.data?.removing.length ? "destructive" : "default"}
-            disabled={!targetId || blocked || deploy.isPending || !plan.data?.steps.length}
-            onClick={() => deploy.mutate()}
+            variant={mode === "replace" ? "destructive" : "default"}
+            disabled={!ready.length || plans.isFetching}
+            onClick={() => {
+              onStart({
+                sourceCampaignId: offer.source!.source_campaign_id,
+                sourceLabel: offer.offer_name,
+                mode,
+                // Only the ones that can actually take it. Queuing a known
+                // failure just to report it later wastes a write attempt
+                // against a live campaign.
+                tasks: ready.map((p) => ({
+                  campaignId: p.targetId,
+                  name: nameOf(p.targetId),
+                  status: "pending" as const,
+                })),
+              });
+              onClose();
+            }}
           >
-            {deploy.isPending ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
-            {mode === "replace" && plan.data?.removing.length
-              ? `Replace ${plan.data.removing.length} step${plan.data.removing.length === 1 ? "" : "s"}`
-              : `Add ${plan.data?.steps.length ?? 0} step${plan.data?.steps.length === 1 ? "" : "s"}`}
+            {mode === "replace" ? "Replace in" : "Copy to"} {ready.length}{" "}
+            {ready.length === 1 ? "campaign" : "campaigns"}
           </Button>
         </DialogFooter>
       </DialogContent>

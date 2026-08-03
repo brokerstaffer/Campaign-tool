@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EmailPanel } from "@/components/analytics/email-panel";
 import { CopySequenceDialog } from "@/components/campaigns/copy-sequence-dialog";
+import { PushSequenceDialog } from "@/components/campaigns/push-sequence-dialog";
+import { BulkDeployPanel, useBulkDeploy } from "@/components/analytics/bulk-deploy";
 import { SequenceEditor, type EditableStep } from "@/components/campaigns/sequence-editor";
 import { fullNumber, percent } from "@/lib/analytics/format.ts";
 import { STATUS_TONE, canApply, isKnownStatus } from "@/lib/campaigns/status.ts";
@@ -467,7 +469,9 @@ function Sequence({
 }) {
   const [open, setOpen] = useState<number | null>(steps[0]?.id ?? null);
   const [copying, setCopying] = useState(false);
+  const [pushing, setPushing] = useState(false);
   const [editing, setEditing] = useState(false);
+  const deploy = useBulkDeploy();
 
   /*
    * Variants are flattened back out for editing. The read view nests them under
@@ -500,17 +504,36 @@ function Sequence({
 
   const copyButton = (
     <>
-      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setEditing(true)}>
+      <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setEditing(true)}>
         Edit sequence
       </Button>
-      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setCopying(true)}>
+      <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setCopying(true)}>
         Copy sequence from…
+      </Button>
+      {/* The other direction. This campaign's sequence is often the proven one,
+          and rolling it out was previously only possible from an offer card —
+          which meant creating an offer just to reuse a sequence. */}
+      <Button
+        size="sm"
+        className="h-8 text-xs"
+        disabled={!steps.length}
+        onClick={() => setPushing(true)}
+      >
+        Push to campaigns…
       </Button>
       <CopySequenceDialog
         targetId={campaignId}
         targetName={campaignName}
         open={copying}
         onOpenChange={setCopying}
+      />
+      <PushSequenceDialog
+        sourceId={campaignId}
+        sourceName={campaignName}
+        stepCount={steps.length}
+        open={pushing}
+        onOpenChange={setPushing}
+        onStart={deploy.start}
       />
     </>
   );
@@ -529,6 +552,12 @@ function Sequence({
 
   return (
     <div className="space-y-3">
+      <BulkDeployPanel
+        batch={deploy.batch}
+        running={deploy.running}
+        onRetry={deploy.retryFailed}
+        onDismiss={deploy.dismiss}
+      />
       <div className="flex flex-wrap justify-end gap-2">{copyButton}</div>
       {steps.map((step, index) => (
         <div key={step.id} className="rounded-xl border bg-card shadow-sm">
