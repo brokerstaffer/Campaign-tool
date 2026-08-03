@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   const sb = getSupabase();
   const teamId = TEAM_ID();
 
-  const [rows, offers, attached] = await Promise.all([
+  const [rows, offers, attached, sources] = await Promise.all([
     sb.rpc("analytics_offer_rows", {
       p_team_id: teamId,
       p_from: filters.from,
@@ -42,15 +42,25 @@ export async function GET(request: NextRequest) {
     }),
     sb.from("offers").select("id, name, niche, active").eq("team_id", teamId).order("name"),
     sb.from("campaign_offers").select("campaign_id, offer_id"),
+    // Which campaign's sequence represents each offer — the thing the one-click
+    // deploy copies FROM.
+    sb.rpc("analytics_offer_source", { p_team_id: teamId }),
   ]);
 
-  const failed = rows.error ?? offers.error ?? attached.error;
+  const failed = rows.error ?? offers.error ?? attached.error ?? sources.error;
   if (failed) return NextResponse.json({ error: failed.message }, { status: 500 });
+
+  const sourceBy = new Map(
+    (sources.data ?? []).map((s: { offer_id: string }) => [s.offer_id, s]),
+  );
 
   return NextResponse.json({
     from: filters.from,
     to: filters.to,
-    rows: rows.data ?? [],
+    rows: (rows.data ?? []).map((r: { offer_id: string }) => ({
+      ...r,
+      source: sourceBy.get(r.offer_id) ?? null,
+    })),
     offers: offers.data ?? [],
     // Campaigns with no offer are the to-do list — the same shape as the
     // unassigned-campaign queue on the Clients page.
@@ -61,6 +71,10 @@ export async function GET(request: NextRequest) {
 const OfferBody = z.object({
   name: z.string().min(1).max(120),
   niche: z.string().max(120).optional().nullable(),
+  /** Optional: seed the offer from a campaign's sequence straight away. */
+  sourceCampaignId: z.number().int().positive().nullable().optional(),
+  /** Attach these campaigns on creation, so a new group is never empty. */
+  campaignIds: z.array(z.number().int().positive()).max(200).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -87,8 +101,9 @@ export async function POST(request: NextRequest) {
       team_id: TEAM_ID(),
       name: parsed.data.name.trim(),
       niche: parsed.data.niche?.trim() || null,
+      source_campaign_id: parsed.data.sourceCampaignId ?? null,
     })
-    .select("id, name, niche, active")
+    .select("id, name, niche, active, source_campaign_id")
     .single();
 
   if (error) {
@@ -103,6 +118,20 @@ export async function POST(request: NextRequest) {
       },
       { status: error.code === "23505" ? 409 : 500 },
     );
+  }
+
+  if (parsed.data.campaignIds?.length && data) {
+    await getSupabase()
+      .from("campaign_offers")
+      .upsert(
+        parsed.data.campaignIds.map((campaignId) => ({
+          campaign_id: campaignId,
+          offer_id: data.id,
+          actor: session.email,
+          updated_at: new Date().toISOString(),
+        })),
+        { onConflict: "campaign_id" },
+      );
   }
 
   return NextResponse.json({ offer: data }, { status: 201 });

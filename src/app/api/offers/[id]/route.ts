@@ -12,6 +12,8 @@ const Patch = z.object({
   name: z.string().min(1).max(120).optional(),
   niche: z.string().max(120).nullable().optional(),
   active: z.boolean().optional(),
+  /** Nominate which campaign's sequence represents this offer. */
+  sourceCampaignId: z.number().int().positive().nullable().optional(),
 });
 
 async function requireSession() {
@@ -36,6 +38,9 @@ export async function PATCH(
   if (parsed.data.name !== undefined) patch.name = parsed.data.name.trim();
   if (parsed.data.niche !== undefined) patch.niche = parsed.data.niche?.trim() || null;
   if (parsed.data.active !== undefined) patch.active = parsed.data.active;
+  if (parsed.data.sourceCampaignId !== undefined) {
+    patch.source_campaign_id = parsed.data.sourceCampaignId;
+  }
 
   const { error } = await getSupabase()
     .from("offers")
