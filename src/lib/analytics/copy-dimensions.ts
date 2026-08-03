@@ -13,7 +13,7 @@
 export const COPY_DIMENSIONS = [
   {
     key: "subject_line",
-    label: "Subject Line",
+    label: "Subject Line Type",
     hint: "How the subject earns the open.",
     suggestions: ["Variable", "Direct", "Personalized", "Question", "Curiosity Gap"],
   },

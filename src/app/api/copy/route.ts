@@ -75,6 +75,18 @@ export async function GET(request: NextRequest) {
     (s) => !offerId || s.offer_id === offerId,
   );
 
+  interface Member {
+    id: number;
+    subject: string | null;
+    campaign: string | null;
+    sent: number;
+    replies: number;
+    positive: number;
+    bounced: number;
+    reply_rate: number | null;
+    positive_rate: number | null;
+    bounce_rate: number | null;
+  }
   interface Bucket {
     key: string;
     values: string[];
@@ -84,6 +96,16 @@ export async function GET(request: NextRequest) {
     positive: number;
     bounced: number;
     untagged: boolean;
+    /*
+     * The actual emails behind the row. "Question: 2.68% positive" is an
+     * abstraction nobody can check or act on; the subjects underneath are the
+     * thing you actually rewrite, so they travel with the aggregate rather than
+     * needing a second request.
+     *
+     * Bounded by first-email steps with volume (85), so shipping them all costs
+     * nothing.
+     */
+    members: Member[];
   }
   const buckets = new Map<string, Bucket>();
 
@@ -106,7 +128,21 @@ export async function GET(request: NextRequest) {
       positive: 0,
       bounced: 0,
       untagged: values.includes(UNTAGGED),
+      members: [],
     };
+    bucket.members.push({
+      id: step.sequence_step_id,
+      subject: step.subject,
+      campaign: step.campaign_name,
+      sent: Number(step.sent) || 0,
+      replies: Number(step.replies) || 0,
+      positive: Number(step.positive) || 0,
+      bounced: Number(step.bounced) || 0,
+      reply_rate: Number(step.sent) > 0 ? Number(step.replies) / Number(step.sent) : null,
+      positive_rate:
+        Number(step.replies) > 0 ? Number(step.positive) / Number(step.replies) : null,
+      bounce_rate: Number(step.sent) > 0 ? Number(step.bounced) / Number(step.sent) : null,
+    });
     bucket.steps += 1;
     bucket.sent += Number(step.sent) || 0;
     bucket.replies += Number(step.replies) || 0;
@@ -118,6 +154,7 @@ export async function GET(request: NextRequest) {
   const rows = [...buckets.values()]
     .map((b) => ({
       ...b,
+      members: b.members.sort((x, y) => y.sent - x.sent),
       // NULL, never 0, when nothing was sent — "no data" and "0%" are different
       // facts and DASH is how the first one reaches the DOM.
       reply_rate: b.sent > 0 ? b.replies / b.sent : null,

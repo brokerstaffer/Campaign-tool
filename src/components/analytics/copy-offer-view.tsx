@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, Send, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Pencil, Plus, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -48,9 +48,22 @@ interface OfferRow {
   source: { source_campaign_id: number; source_name: string; step_count: number } | null;
 }
 
+interface Member {
+  id: number;
+  subject: string | null;
+  campaign: string | null;
+  sent: number;
+  replies: number;
+  positive: number;
+  reply_rate: number | null;
+  positive_rate: number | null;
+  bounce_rate: number | null;
+}
+
 interface CopyRow {
   key: string;
   values: string[];
+  members: Member[];
   steps: number;
   sent: number;
   replies: number;
@@ -94,7 +107,9 @@ export function CopyOfferView() {
 
   const [dimensions, setDimensions] = useState<string[]>(["subject_line"]);
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<OfferRow | null>(null);
   const [deploying, setDeploying] = useState<OfferRow | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const query = toQueryString();
 
@@ -172,6 +187,14 @@ export function CopyOfferView() {
                       {offer.campaigns === 1 ? "campaign" : "campaigns"}
                     </p>
                   </div>
+                  <button
+                    type="button"
+                    aria-label={`Edit ${offer.offer_name}`}
+                    onClick={() => setEditing(offer)}
+                    className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    <Pencil className="size-3.5" />
+                  </button>
                 </div>
 
                 {offer.source ? (
@@ -271,6 +294,20 @@ export function CopyOfferView() {
 
         {/* ---- Copy dimensions ---- */}
         <section>
+          <div className="mb-1">
+            <h2 className="text-base font-semibold tracking-tight">How the copy performs</h2>
+            {/*
+              * "Question 2.68%" is meaningless without saying what is being
+              * compared. This line names the unit (an opening email), the
+              * grouping, and the fact that a row opens.
+              */}
+            <p className="text-sm text-muted-foreground">
+              Every campaign&apos;s opening email, grouped by how its{" "}
+              {dimensions.map((d) => dimensionLabel(d).toLowerCase()).join(" and ")} was written.
+              Open a row to see the actual emails in it.
+            </p>
+          </div>
+
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="text-sm font-medium">Dimension:</span>
 
@@ -353,8 +390,8 @@ export function CopyOfferView() {
             <table className="w-full table-fixed text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
-                  {dimensions.map((key) => (
-                    <th key={key} className="px-4 py-2.5 font-medium">
+                  {dimensions.map((key, i) => (
+                    <th key={key} className={cn("py-2.5 font-medium", i === 0 ? "pl-10 pr-4" : "px-4")}>
                       {dimensionLabel(key)}
                     </th>
                   ))}
@@ -387,12 +424,30 @@ export function CopyOfferView() {
                     </td>
                   </tr>
                 ) : (
-                  rows.map((row) => {
+                  rows.flatMap((row) => {
                     const medal = medals.get(row);
-                    return (
-                      <tr key={row.key} className="transition-colors hover:bg-muted/50">
+                    const open = expanded === row.key;
+                    return [
+                      <tr
+                        key={row.key}
+                        onClick={() => setExpanded(open ? null : row.key)}
+                        className="cursor-pointer transition-colors hover:bg-muted/50"
+                      >
                         {row.values.map((value, i) => (
-                          <td key={i} className="truncate px-4 py-2.5" title={value}>
+                          <td
+                            key={i}
+                            className={cn("truncate py-2.5", i === 0 ? "pl-3 pr-4" : "px-4")}
+                            title={value}
+                          >
+                            {i === 0 ? (
+                              <span className="mr-1.5 inline-block align-middle text-muted-foreground">
+                                {open ? (
+                                  <ChevronDown className="size-4" />
+                                ) : (
+                                  <ChevronRight className="size-4" />
+                                )}
+                              </span>
+                            ) : null}
                             {i === 0 && medal ? <span className="mr-1.5">{medal}</span> : null}
                             <span
                               className={cn(
@@ -428,8 +483,77 @@ export function CopyOfferView() {
                         >
                           {percent(row.bounce_rate, 2)}
                         </td>
-                      </tr>
-                    );
+                      </tr>,
+
+                      /*
+                       * The emails behind the number. This is what makes the
+                       * row mean something: "Direct wins" is only actionable
+                       * once you can read the four subjects that are winning.
+                       */
+                      open ? (
+                        <tr key={`${row.key}-open`} className="bg-muted/30">
+                          <td colSpan={dimensions.length + 5} className="px-3 py-3">
+                            <p className="mb-2 pl-7 text-xs text-muted-foreground">
+                              {row.members.length} opening{" "}
+                              {row.members.length === 1 ? "email" : "emails"} in this group
+                            </p>
+                            <table className="w-full table-fixed text-xs">
+                              <thead>
+                                <tr className="text-left text-muted-foreground">
+                                  <th className="w-[42%] py-1 pl-7 pr-3 font-medium">Subject</th>
+                                  <th className="w-[24%] px-3 py-1 font-medium">Campaign</th>
+                                  <th className="px-3 py-1 text-right font-medium">Sent</th>
+                                  <th className="px-3 py-1 text-right font-medium">Reply&nbsp;%</th>
+                                  <th className="px-3 py-1 text-right font-medium">
+                                    Positive&nbsp;%
+                                  </th>
+                                  <th className="px-3 py-1 text-right font-medium">
+                                    Bounce&nbsp;%
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {row.members.map((m) => (
+                                  <tr key={m.id}>
+                                    <td
+                                      className="truncate py-1 pl-7 pr-3"
+                                      title={m.subject ?? ""}
+                                    >
+                                      {m.subject || (
+                                        <em className="text-muted-foreground">No subject</em>
+                                      )}
+                                    </td>
+                                    <td
+                                      className="truncate px-3 py-1 text-muted-foreground"
+                                      title={m.campaign ?? ""}
+                                    >
+                                      {m.campaign ?? "—"}
+                                    </td>
+                                    <td className="tnum px-3 py-1 text-right">
+                                      {fullNumber(m.sent)}
+                                    </td>
+                                    <td className="tnum px-3 py-1 text-right">
+                                      {percent(m.reply_rate, 2)}
+                                    </td>
+                                    <td className="tnum px-3 py-1 text-right">
+                                      {percent(m.positive_rate, 2)}
+                                    </td>
+                                    <td
+                                      className={cn(
+                                        "tnum px-3 py-1 text-right",
+                                        (m.bounce_rate ?? 0) >= 0.03 ? "text-[#b02525]" : "",
+                                      )}
+                                    >
+                                      {percent(m.bounce_rate, 2)}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      ) : null,
+                    ];
                   })
                 )}
               </tbody>
@@ -459,6 +583,14 @@ export function CopyOfferView() {
         onCreated={() => {
           void queryClient.invalidateQueries({ queryKey: ["offers"] });
           setCreating(false);
+        }}
+      />
+      <EditOfferDialog
+        offer={editing}
+        onClose={() => setEditing(null)}
+        onSaved={() => {
+          void queryClient.invalidateQueries({ queryKey: ["offers"] });
+          setEditing(null);
         }}
       />
       <DeployDialog offer={deploying} onClose={() => setDeploying(null)} />
@@ -825,5 +957,159 @@ function SuggestTagsButton({ onDone }: { onDone: () => void }) {
       {run.isPending ? <Loader2 className="size-3.5 animate-spin" /> : null}
       Suggest subject types
     </Button>
+  );
+}
+
+/**
+ * Rename an offer, set its niche, and choose which campaign's sequence
+ * represents it.
+ *
+ * Deleting is here too rather than on a separate screen, but it is deliberately
+ * the least prominent control and it says what it does NOT do: removing the
+ * label must never look like it might remove the campaigns.
+ */
+function EditOfferDialog({
+  offer,
+  onClose,
+  onSaved,
+}: {
+  offer: OfferRow | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [niche, setNiche] = useState("");
+  const [sourceId, setSourceId] = useState<number | null>(null);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+
+  // Seed the draft from the offer when a different one is opened. Done during
+  // render rather than in an effect — the React Compiler lint rejects setState
+  // in an effect, and this is the same pattern range-picker.tsx uses.
+  if (offer && loadedFor !== offer.offer_id) {
+    setLoadedFor(offer.offer_id);
+    setName(offer.offer_name);
+    setNiche(offer.niche ?? "");
+    setSourceId(offer.source?.source_campaign_id ?? null);
+  }
+
+  const campaigns = useQuery<{ items: Array<{ id: number; name: string }> }>({
+    queryKey: ["campaigns", "all", ""],
+    queryFn: async () => {
+      const response = await fetch("/api/campaigns?status=all");
+      if (!response.ok) throw new Error("Failed to load campaigns");
+      return response.json();
+    },
+    enabled: Boolean(offer),
+    staleTime: 60_000,
+  });
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/offers/${offer!.offer_id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, niche: niche || null, sourceCampaignId: sourceId }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Could not save the offer");
+      return body;
+    },
+    onSuccess: onSaved,
+  });
+
+  const remove = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/offers/${offer!.offer_id}`, { method: "DELETE" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Could not delete the offer");
+      return body;
+    },
+    onSuccess: onSaved,
+  });
+
+  if (!offer) return null;
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit offer</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <label className="block">
+            <span className="text-xs font-medium">Name</span>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="mt-1 h-9 text-sm"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium">Niche</span>
+            <Input
+              value={niche}
+              onChange={(e) => setNiche(e.target.value)}
+              placeholder="Real estate brokerages"
+              className="mt-1 h-9 text-sm"
+            />
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium">Sequence from</span>
+            <select
+              value={sourceId ?? ""}
+              onChange={(e) => setSourceId(e.target.value ? Number(e.target.value) : null)}
+              className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-sm"
+            >
+              <option value="">Highest-volume campaign (automatic)</option>
+              {(campaigns.data?.items ?? []).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-[11px] text-muted-foreground">
+              Campaigns in an offer drift apart as they are edited, so this picks which version
+              gets copied. Left automatic, it follows the highest-volume one.
+            </span>
+          </label>
+
+          {(save.error ?? remove.error) ? (
+            <p className="rounded-md border border-red-300/60 bg-red-50 p-2 text-xs text-red-800">
+              {(save.error ?? remove.error)!.message}
+            </p>
+          ) : null}
+        </div>
+
+        <DialogFooter className="sm:justify-between">
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={remove.isPending}
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Delete the offer "${offer.offer_name}"?\n\nIts ${offer.campaigns} campaigns are only detached — none of them is changed or deleted.`,
+                )
+              ) {
+                remove.mutate();
+              }
+            }}
+            className="text-red-700 hover:text-red-800"
+          >
+            Delete offer
+          </Button>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button size="sm" disabled={!name.trim() || save.isPending} onClick={() => save.mutate()}>
+              {save.isPending ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
+              Save
+            </Button>
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
