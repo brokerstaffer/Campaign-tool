@@ -107,7 +107,14 @@ export async function PUT(
     const payload = await eb.getCampaignSequenceSteps(campaignId);
     existing = payload?.data?.sequence_steps ?? [];
   } catch (error) {
-    return NextResponse.json({ error: describeEmailBisonError(error) }, { status: 502 });
+    const message = describeEmailBisonError(error);
+    // A campaign with no sequence yet is the normal starting state, not a
+    // fault: EmailBison reports it as an error rather than an empty list.
+    if (/do not exist|not found/i.test(message)) {
+      existing = [];
+    } else {
+      return NextResponse.json({ error: message }, { status: 502 });
+    }
   }
 
   const keptIds = new Set(steps.map((s) => s.id).filter((v): v is number => v != null));

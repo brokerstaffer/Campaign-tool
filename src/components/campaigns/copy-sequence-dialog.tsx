@@ -249,7 +249,14 @@ export function CopySequenceDialog({
                     type="radio"
                     name="mode"
                     checked={mode === value}
-                    onChange={() => setMode(value)}
+                    onChange={() => {
+                      setMode(value);
+                      // Clear the previous mode's failure. Otherwise a Replace
+                      // error ("cannot be deleted…") sits under an Append,
+                      // which deletes nothing.
+                      preview.reset();
+                      commit.reset();
+                    }}
                     className="mt-0.5 accent-foreground"
                   />
                   <span>

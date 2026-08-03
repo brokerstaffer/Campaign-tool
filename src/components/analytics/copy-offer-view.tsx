@@ -720,6 +720,44 @@ function DeployDialog({ offer, onClose }: { offer: OfferRow | null; onClose: () 
   const [targetId, setTargetId] = useState<number | null>(null);
   const [mode, setMode] = useState<"append" | "replace">("append");
 
+  /*
+   * Preview before apply, the same discipline as the §9.4 flow on the campaign
+   * page. Copying a sequence into a live campaign changes what real prospects
+   * receive, and "3 steps from X" is not something you can confirm against —
+   * you need the subjects, the waits, and for Replace what would be destroyed.
+   */
+  const plan = useQuery({
+    queryKey: ["copy-plan", offer?.offer_id, targetId, mode],
+    queryFn: async () => {
+      const response = await fetch(`/api/campaigns/${targetId}/copy-sequence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceCampaignId: offer!.source!.source_campaign_id,
+          mode,
+          includeVariants: true,
+          includeAttachments: true,
+          apply: false,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Could not build the preview");
+      return body.plan as {
+        steps: Array<{
+          order: number;
+          subject: string | null;
+          waitInDays: number | null;
+          threadReply: boolean;
+          isVariant: boolean;
+          opening: string | null;
+        }>;
+        removing: Array<{ order: number; subject: string | null }>;
+        blocked: boolean;
+        warnings: string[];
+      };
+    },
+    enabled: Boolean(offer?.source && targetId),
+  });
 
   const deploy = useMutation({
     mutationFn: async () => {
@@ -749,9 +787,11 @@ function DeployDialog({ offer, onClose }: { offer: OfferRow | null; onClose: () 
 
   if (!offer) return null;
 
+  const blocked = Boolean(plan.data?.blocked);
+
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Copy &ldquo;{offer.offer_name}&rdquo; to a campaign</DialogTitle>
         </DialogHeader>
@@ -767,7 +807,13 @@ function DeployDialog({ offer, onClose }: { offer: OfferRow | null; onClose: () 
             <div className="mt-1">
               <CampaignPicker
                 value={targetId}
-                onChange={setTargetId}
+                onChange={(id) => {
+                  setTargetId(id);
+                  // A stale failure from the previous target or mode must not
+                  // sit under the new one. That is what made an Append display
+                  // a "cannot be deleted" error left over from a Replace.
+                  deploy.reset();
+                }}
                 exclude={offer.source?.source_campaign_id ?? null}
               />
             </div>
@@ -779,7 +825,10 @@ function DeployDialog({ offer, onClose }: { offer: OfferRow | null; onClose: () 
                 <input
                   type="radio"
                   checked={mode === m}
-                  onChange={() => setMode(m)}
+                  onChange={() => {
+                    setMode(m);
+                    deploy.reset();
+                  }}
                   className="accent-foreground"
                 />
                 <span className="capitalize">{m}</span>
@@ -787,11 +836,72 @@ function DeployDialog({ offer, onClose }: { offer: OfferRow | null; onClose: () 
             ))}
           </div>
 
-          {mode === "replace" ? (
-            <p className="rounded-md border border-amber-300/60 bg-amber-50 p-2 text-xs text-amber-900">
-              Replace deletes the target&apos;s current steps first. EmailBison refuses to delete
-              a step that has already sent, so this fails on most live campaigns — its previous
-              sequence is recorded in Activity before anything is removed either way.
+          {plan.isFetching ? (
+            <p className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" />
+              Checking the target…
+            </p>
+          ) : null}
+
+          {plan.data?.warnings.map((warning, i) => (
+            <p
+              key={i}
+              className="rounded-md border border-amber-300/60 bg-amber-50 p-2 text-xs text-amber-900"
+            >
+              {warning}
+            </p>
+          ))}
+
+          {plan.data?.removing.length ? (
+            <div>
+              <p className="mb-1 text-xs font-medium text-red-800">
+                Will be deleted ({plan.data.removing.length})
+              </p>
+              <ul className="max-h-20 space-y-0.5 overflow-y-auto rounded-md border border-red-300/60 bg-red-50/50 p-2 text-xs">
+                {plan.data.removing.map((step, i) => (
+                  <li key={i} className="truncate line-through">
+                    {step.order}. {step.subject || "(no subject)"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {plan.data?.steps.length ? (
+            <div>
+              <p className="mb-1 text-xs font-medium">Will be added ({plan.data.steps.length})</p>
+              <ul className="max-h-52 space-y-1.5 overflow-y-auto rounded-md border p-2 text-xs">
+                {plan.data.steps.map((step, i) => (
+                  <li key={i}>
+                    <span className="flex items-baseline gap-2">
+                      <span className="tnum shrink-0 text-muted-foreground">{step.order}.</span>
+                      <span className="min-w-0 flex-1 truncate">
+                        {step.subject || "(no subject)"}
+                      </span>
+                      {step.threadReply ? (
+                        <span className="shrink-0 rounded border px-1 text-[10px]">thread</span>
+                      ) : null}
+                      {step.isVariant ? (
+                        <span className="shrink-0 rounded border px-1 text-[10px]">variant</span>
+                      ) : null}
+                      <span className="tnum shrink-0 text-muted-foreground">
+                        {step.waitInDays ? `${step.waitInDays}d` : "immediate"}
+                      </span>
+                    </span>
+                    {step.opening ? (
+                      <span className="block truncate pl-6 text-[11px] text-muted-foreground">
+                        {step.opening}
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {plan.error ? (
+            <p className="rounded-md border border-red-300/60 bg-red-50 p-2 text-xs text-red-800">
+              {(plan.error as Error).message}
             </p>
           ) : null}
 
@@ -806,9 +916,16 @@ function DeployDialog({ offer, onClose }: { offer: OfferRow | null; onClose: () 
           <Button variant="ghost" size="sm" onClick={onClose}>
             Cancel
           </Button>
-          <Button size="sm" disabled={!targetId || deploy.isPending} onClick={() => deploy.mutate()}>
+          <Button
+            size="sm"
+            variant={plan.data?.removing.length ? "destructive" : "default"}
+            disabled={!targetId || blocked || deploy.isPending || !plan.data?.steps.length}
+            onClick={() => deploy.mutate()}
+          >
             {deploy.isPending ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
-            Copy sequence
+            {mode === "replace" && plan.data?.removing.length
+              ? `Replace ${plan.data.removing.length} step${plan.data.removing.length === 1 ? "" : "s"}`
+              : `Add ${plan.data?.steps.length ?? 0} step${plan.data?.steps.length === 1 ? "" : "s"}`}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -816,13 +933,6 @@ function DeployDialog({ offer, onClose }: { offer: OfferRow | null; onClose: () 
   );
 }
 
-/**
- * A discovered group, one name away from being an offer.
- *
- * The name field is pre-filled with the subject because that is very often the
- * offer's name already ("Join a Zillow preferred brokerage?" → Zillow Flex is a
- * rename, not a lookup), and an editable default beats an empty required field.
- */
 function SuggestionCard({
   suggestion,
   onCreated,

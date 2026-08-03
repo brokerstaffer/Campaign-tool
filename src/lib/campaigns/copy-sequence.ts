@@ -101,6 +101,28 @@ async function fetchSteps(campaignId: number): Promise<EBSequenceStep[]> {
   return payload?.data?.sequence_steps ?? [];
 }
 
+/*
+ * The TARGET may legitimately have no sequence at all.
+ *
+ * EmailBison answers "Sequence steps do not exist for <name>" with a 4xx rather
+ * than an empty list, and propagating that as an error broke the single most
+ * important case this feature exists for: pushing a proven offer into a
+ * freshly-created campaign. An empty target is not a failure, it is the normal
+ * starting state.
+ *
+ * Only the target is treated this way. A SOURCE with no sequence really is
+ * nothing to copy, and must still say so.
+ */
+async function fetchTargetSteps(campaignId: number): Promise<EBSequenceStep[]> {
+  try {
+    return await fetchSteps(campaignId);
+  } catch (error) {
+    const message = describeEmailBisonError(error).toLowerCase();
+    if (message.includes("do not exist") || message.includes("not found")) return [];
+    throw error;
+  }
+}
+
 /** Builds the preview the operator confirms against. Reads only. */
 export async function planCopy(
   sourceId: number,
@@ -114,7 +136,7 @@ export async function planCopy(
   const [{ data: campaigns }, sourceSteps, targetSteps] = await Promise.all([
     sb.from("campaigns").select("id, name, status").eq("team_id", teamId).in("id", [sourceId, targetId]),
     fetchSteps(sourceId),
-    fetchSteps(targetId),
+    fetchTargetSteps(targetId),
   ]);
 
   const source = campaigns?.find((c) => c.id === sourceId);
@@ -225,7 +247,7 @@ export async function applyCopy(
 
   const [sourceSteps, targetSteps] = await Promise.all([
     fetchSteps(sourceId),
-    fetchSteps(targetId),
+    fetchTargetSteps(targetId),
   ]);
 
   const { data: campaigns } = await sb
