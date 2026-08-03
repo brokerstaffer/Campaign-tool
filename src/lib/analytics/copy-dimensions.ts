@@ -67,6 +67,27 @@ export function dimensionLabel(key: string): string {
   return COPY_DIMENSIONS.find((d) => d.key === key)?.label ?? key;
 }
 
+/**
+ * Classifies a subject line's TYPE from its text.
+ *
+ * Only this dimension is machine-decidable. The rules below read the subject
+ * rather than guessing at intent: a "Re:"/"Fwd:" prefix is the thread trick, a
+ * merge tag makes it variable, a trailing question mark makes it a question,
+ * and anything else is a direct statement. Tone, preposition and social proof
+ * are judgements a rule would only pretend to make — and a confident wrong tag
+ * is worse than none, because it looks like evidence.
+ *
+ * Order matters: "Re: Join a brokerage?" is the thread trick first and a
+ * question second.
+ */
+export function suggestSubjectLineType(subject: string): string {
+  const text = subject.trim();
+  if (/^(re|fwd|fw)\s*:/i.test(text)) return "RE/FWD Trick";
+  if (/\{[^}]+\}/.test(text)) return "Variable";
+  if (text.endsWith("?")) return "Question";
+  return "Direct";
+}
+
 /*
  * A medal needs a floor (§6.1 shows the top three marked).
  *

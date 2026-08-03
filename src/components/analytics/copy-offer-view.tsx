@@ -62,6 +62,22 @@ interface CopyRow {
   bounce_rate: number | null;
 }
 
+interface Suggestion {
+  fingerprint: string;
+  example_subject: string;
+  variants: number;
+  campaigns: number;
+  campaign_ids: number[];
+  source_campaign_id: number;
+  source_name: string;
+  step_count: number;
+  claimed: number;
+  sent: number;
+  reply_rate: number | null;
+  positive_rate: number | null;
+  bounce_rate: number | null;
+}
+
 interface CopyResponse {
   dimensions: string[];
   rows: CopyRow[];
@@ -81,6 +97,17 @@ export function CopyOfferView() {
   const [deploying, setDeploying] = useState<OfferRow | null>(null);
 
   const query = toQueryString();
+
+  const suggestions = useQuery<{ suggestions: Suggestion[] }>({
+    queryKey: ["offer-suggestions", query],
+    queryFn: async () => {
+      const response = await fetch(`/api/offers/suggestions?${query}`);
+      if (!response.ok) throw new Error("Could not load suggestions");
+      return response.json();
+    },
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  });
 
   const offers = useQuery<{ rows: OfferRow[] }>({
     queryKey: ["offers", query],
@@ -122,7 +149,8 @@ export function CopyOfferView() {
   return (
     <div className="min-h-0 flex-1 overflow-auto bg-muted/30">
       <div className="space-y-5 p-6">
-        {/* ---- Offer groups ---- */}
+        {/* ---- Offer groups: only once at least one exists ---- */}
+        {(offers.data?.rows?.length ?? 0) > 0 ? (
         <section>
           <div className="mb-3 flex items-baseline gap-3">
             <h2 className="text-base font-semibold tracking-tight">Offers</h2>
@@ -197,6 +225,49 @@ export function CopyOfferView() {
             </button>
           </div>
         </section>
+        ) : null}
+
+        {/*
+          * Proposed groups, discovered from the data.
+          *
+          * Campaigns that open with the same email ARE the same offer, and the
+          * workspace already contains 36 on one subject and 24 on another.
+          * Shipping an empty "Add Group" card asked the operator to reassemble
+          * by hand something the database can see. Naming is the only part a
+          * human is genuinely needed for, so that is the only part left to do.
+          */}
+        {(suggestions.data?.suggestions?.length ?? 0) > 0 ? (
+          <section>
+            <div className="mb-3 flex items-baseline gap-3">
+              <h2 className="text-base font-semibold tracking-tight">Suggested groups</h2>
+              <p className="text-sm text-muted-foreground">
+                Campaigns that open with the same email — name one to turn it into an offer
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCreating(true)}
+                className="ml-auto h-8 gap-1.5 text-sm"
+              >
+                <Plus className="size-3.5" />
+                Add Group
+              </Button>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              {suggestions.data!.suggestions.slice(0, 8).map((s) => (
+                <SuggestionCard
+                  key={s.fingerprint}
+                  suggestion={s}
+                  onCreated={() => {
+                    void queryClient.invalidateQueries({ queryKey: ["offers"] });
+                    void queryClient.invalidateQueries({ queryKey: ["offer-suggestions"] });
+                  }}
+                />
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         {/* ---- Copy dimensions ---- */}
         <section>
@@ -249,6 +320,15 @@ export function CopyOfferView() {
 
             {copy.isFetching ? (
               <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+            ) : null}
+
+            {coverPct === 0 ? (
+              <SuggestTagsButton
+                onDone={() => {
+                  void queryClient.invalidateQueries({ queryKey: ["copy"] });
+                  void queryClient.invalidateQueries({ queryKey: ["copy-tags"] });
+                }}
+              />
             ) : null}
 
             {coverPct != null ? (
@@ -628,5 +708,122 @@ function DeployDialog({ offer, onClose }: { offer: OfferRow | null; onClose: () 
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * A discovered group, one name away from being an offer.
+ *
+ * The name field is pre-filled with the subject because that is very often the
+ * offer's name already ("Join a Zillow preferred brokerage?" → Zillow Flex is a
+ * rename, not a lookup), and an editable default beats an empty required field.
+ */
+function SuggestionCard({
+  suggestion,
+  onCreated,
+}: {
+  suggestion: Suggestion;
+  onCreated: () => void;
+}) {
+  const [name, setName] = useState(suggestion.example_subject.replace(/\?$/, "").slice(0, 60));
+
+  const create = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/offers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          sourceCampaignId: suggestion.source_campaign_id,
+          campaignIds: suggestion.campaign_ids,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Could not create the offer");
+      return body;
+    },
+    onSuccess: onCreated,
+  });
+
+  return (
+    <div className="rounded-xl border border-dashed bg-card/60 p-4">
+      <p className="truncate text-sm font-medium" title={suggestion.example_subject}>
+        {suggestion.example_subject}
+      </p>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        {suggestion.campaigns} campaigns
+        {suggestion.variants > 1 ? ` · ${suggestion.variants} subject variants` : ""}
+        {suggestion.claimed > 0 ? ` · ${suggestion.claimed} already in an offer` : ""}
+      </p>
+
+      <dl className="mt-3 grid grid-cols-4 gap-2 text-center">
+        {(
+          [
+            ["Sent", compactNumber(suggestion.sent), ""],
+            ["Reply", percent(suggestion.reply_rate, 1), ""],
+            ["Positive", percent(suggestion.positive_rate, 1), "text-emerald-700"],
+            ["Bounce", percent(suggestion.bounce_rate, 1), ""],
+          ] as const
+        ).map(([label, value, tone]) => (
+          <div key={label}>
+            <dd className={cn("tnum text-sm font-semibold", tone)}>{value}</dd>
+            <dt className="text-[11px] text-muted-foreground">{label}</dt>
+          </div>
+        ))}
+      </dl>
+
+      <Input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Name this offer"
+        className="mt-3 h-8 text-xs"
+      />
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={!name.trim() || create.isPending}
+        onClick={() => create.mutate()}
+        className="mt-2 h-8 w-full text-xs"
+      >
+        {create.isPending ? <Loader2 className="mr-1.5 size-3 animate-spin" /> : null}
+        Create offer from {suggestion.campaigns}{" "}
+        {suggestion.campaigns === 1 ? "campaign" : "campaigns"}
+      </Button>
+
+      {create.error ? (
+        <p className="mt-2 text-[11px] text-red-700">{create.error.message}</p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Seeds subject-line tags so the dimension table has something to say on day
+ * one. Only that dimension — see suggestSubjectLineType for why the other six
+ * are left to humans.
+ */
+function SuggestTagsButton({ onDone }: { onDone: () => void }) {
+  const run = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/copy/suggest", { method: "POST" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Could not suggest tags");
+      return body as { suggested: number };
+    },
+    onSuccess: onDone,
+  });
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="h-8 gap-1.5 text-sm"
+      disabled={run.isPending}
+      onClick={() => run.mutate()}
+      title="Reads each first email's subject and proposes its type. Marked as suggested until you confirm it."
+    >
+      {run.isPending ? <Loader2 className="size-3.5 animate-spin" /> : null}
+      Suggest subject types
+    </Button>
   );
 }
