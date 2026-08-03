@@ -385,7 +385,10 @@ export function SequenceEditor({
 
                 {/* §6.3: "Tag the copy's seven dimensions from the same screen." */}
                 <div className="border-t pt-3">
-                  <CopyTagsPanel stepId={step.id ?? null} />
+                  <CopyTagsPanel
+                    stepId={step.id ?? null}
+                    isFirstEmail={index === 0 || step.variant}
+                  />
                 </div>
               </div>
             ) : null}

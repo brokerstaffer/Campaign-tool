@@ -29,7 +29,14 @@ interface TagState {
   known: Record<string, string[]>;
 }
 
-export function CopyTagsPanel({ stepId }: { stepId: number | null }) {
+export function CopyTagsPanel({
+  stepId,
+  isFirstEmail = true,
+}: {
+  stepId: number | null;
+  /** Copy analysis covers the first email only; follow-ups are excluded. */
+  isFirstEmail?: boolean;
+}) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Record<string, string>>({});
 
@@ -76,8 +83,15 @@ export function CopyTagsPanel({ stepId }: { stepId: number | null }) {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-baseline gap-2">
+      <div className="flex flex-wrap items-baseline gap-2">
         <p className="text-[11px] font-medium">Copy dimensions</p>
+        {!isFirstEmail ? (
+          // Tagging a follow-up is allowed but never counted, so say so before
+          // someone spends an afternoon on it.
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            follow-up — not included in copy analysis
+          </span>
+        ) : null}
         <p className="text-[11px] text-muted-foreground">
           {tagged} of {COPY_DIMENSIONS.length} tagged · saves immediately, never sent to
           EmailBison

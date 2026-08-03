@@ -263,7 +263,7 @@ export function CopyOfferView() {
                   * sending that presents itself as "how your copy performs" is
                   * worse than an empty table.
                   */}
-                {percent(coverPct, 0)} of sending tagged on{" "}
+                {percent(coverPct, 0)} of first-email sending tagged on{" "}
                 {dimensions.length === 1 ? "this dimension" : "all these dimensions"}
               </p>
             ) : null}
@@ -356,10 +356,19 @@ export function CopyOfferView() {
             </table>
           </div>
 
+          {/*
+            * The scope note is not a footnote people can skip: the numbers here
+            * are deliberately smaller than the campaign totals, and without
+            * this the difference reads as a bug.
+            */}
           <p className="mt-2 text-xs text-muted-foreground">
-            Sorted by volume. Medals mark the best positive rate among values with at least{" "}
-            {fullNumber(MEDAL_MIN_SENT)} sends — without a floor, the smallest sample wins every
-            time.
+            <strong className="font-medium text-foreground">First email only.</strong> Follow-ups
+            are excluded: EmailBison inherits their subject from the step above, so counting them
+            would count the same subject two or three times, and their replies belong to the
+            opener that preceded them. Variants of the first email are included. Sorted by volume;
+            medals mark the best positive rate among values with at least{" "}
+            {fullNumber(MEDAL_MIN_SENT)} sends, because without a floor the smallest sample wins
+            every time.
           </p>
         </section>
       </div>
