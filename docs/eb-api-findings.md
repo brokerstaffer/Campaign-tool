@@ -617,3 +617,36 @@ show the user's typed subject as saved — re-read it.
 
 Both arrive as `{"data": {"success": false, "message": ...}}` with a correct
 non-2xx status, which is why `describeEmailBisonError` unwraps `data`.
+
+### An empty sequence is reported as HTTP 200 with `success: false`
+
+Probed 2026-08-04 against a campaign created for the purpose and deleted after.
+
+`GET /api/campaigns/v1.1/{id}/sequence-steps` on a campaign that has no sequence
+returns **200**, not a 4xx:
+
+```json
+{"data": {"success": false, "message": "Sequence steps do not exist for <name>"}}
+```
+
+This is the single clearest justification for `assertApplied()`: a caller
+checking only the status code reads this as success and then reads
+`data.sequence_steps` as `undefined`.
+
+### Creating a sequence from nothing
+
+`POST /api/campaigns/v1.1/{id}/sequence-steps` works on a campaign with no
+sequence at all — EmailBison creates the sequence and assigns a fresh
+`sequence_id`. There is no separate "create sequence" call to make first.
+
+Verified by copying campaign 91's three steps into a new empty campaign and
+comparing every field:
+
+| step | subject | body | wait | thread | order | variant | body size |
+|---|---|---|---|---|---|---|---|
+| 1 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 2,958 chars |
+| 2 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 4,176 chars |
+| 3 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 2,482 chars |
+
+Identical, including full HTML bodies, and exactly one `Re:` prefix on the
+threaded steps rather than the doubling described above.

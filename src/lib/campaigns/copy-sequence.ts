@@ -104,11 +104,14 @@ async function fetchSteps(campaignId: number): Promise<EBSequenceStep[]> {
 /*
  * The TARGET may legitimately have no sequence at all.
  *
- * EmailBison answers "Sequence steps do not exist for <name>" with a 4xx rather
- * than an empty list, and propagating that as an error broke the single most
- * important case this feature exists for: pushing a proven offer into a
- * freshly-created campaign. An empty target is not a failure, it is the normal
- * starting state.
+ * EmailBison answers "Sequence steps do not exist for <name>" with HTTP 200 and
+ * `{"data": {"success": false, ...}}` — NOT a 4xx. Verified against a campaign
+ * created for the purpose. That shape is why assertApplied() exists: a status
+ * check alone reads it as success and hands back an undefined step list.
+ *
+ * Propagating it as an error broke the single most important case this feature
+ * exists for — pushing a proven offer into a freshly-created campaign. An empty
+ * target is not a failure, it is the normal starting state.
  *
  * Only the target is treated this way. A SOURCE with no sequence really is
  * nothing to copy, and must still say so.

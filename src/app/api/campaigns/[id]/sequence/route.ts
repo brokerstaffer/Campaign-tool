@@ -109,7 +109,8 @@ export async function PUT(
   } catch (error) {
     const message = describeEmailBisonError(error);
     // A campaign with no sequence yet is the normal starting state, not a
-    // fault: EmailBison reports it as an error rather than an empty list.
+    // fault. EmailBison reports it as HTTP 200 with success:false rather than
+    // an empty list, which assertApplied() turns into this error.
     if (/do not exist|not found/i.test(message)) {
       existing = [];
     } else {
