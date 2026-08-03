@@ -121,7 +121,7 @@ function BounceMeter({ rate }: { rate: number | null }) {
         </span>
       ) : null}
       <span
-        className="relative hidden h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-muted md:block"
+        className="relative hidden h-1.5 w-24 shrink-0 overflow-hidden rounded-full bg-muted md:block"
         aria-hidden
       >
         <span
@@ -224,63 +224,24 @@ export function InfrastructureView() {
         </section>
       ) : null}
 
+      {/*
+        * Two columns on a wide screen, not one narrow one.
+        *
+        * The previous version capped everything at 1440px, which on a 2560px
+        * monitor left a third of the screen empty directly beneath a
+        * full-bleed KPI band — the table read as stranded on the left. Simply
+        * removing the cap is not the fix either: stretching six columns across
+        * 2500px reopens the dead zone between a domain and its numbers.
+        *
+        * So the width goes to a SECOND thing. The breakdown takes the main
+        * column, the alert list becomes a side rail that stays visible while
+        * the 493-row table scrolls, and every column keeps a sane measure.
+        * On narrower screens they stack, alert first — it is the part you act
+        * on.
+        */}
       <div className="min-h-0 flex-1 overflow-auto px-6 py-5">
-        {/*
-          * Capped rather than full-bleed. Seven columns across 2000px opened a
-          * dead zone between the domain and its numbers, and the eye has to
-          * travel the whole width to connect a row's name to its bounce rate.
-          * ~1440px keeps that scan short while leaving the name column room to
-          * show a domain in full — which was the original fault.
-          */}
-        <div className="max-w-[1440px] space-y-6">
-          {problems.length ? (
-            <section>
-              <div className="mb-2 flex flex-wrap items-baseline gap-2">
-                <h2 className="text-xs font-medium uppercase tracking-wider">Needs attention</h2>
-                <p className="text-xs text-muted-foreground">
-                  {highCount > 0
-                    ? `${highCount} inbox${highCount === 1 ? "" : "es"} at or above ${percent(HIGH, 0)} bounce`
-                    : "Worst bounce rates"}{" "}
-                  · {data?.minSent}+ sends
-                </p>
-              </div>
-
-              <div className="overflow-hidden rounded-lg border">
-                <table className="w-full text-xs">
-                  <thead className="border-b bg-muted/40 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">Domain</th>
-                      <th className="w-48 px-3 py-2 font-medium">Mailbox</th>
-                      <th className="w-24 px-3 py-2 text-right font-medium">Sent</th>
-                      <th className="w-24 px-3 py-2 text-right font-medium">Bounced</th>
-                      <th className="w-64 px-3 py-2 text-right font-medium">Bounce rate</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {problems.map((row) => (
-                      <tr key={row.id} className="hover:bg-accent/40">
-                        {/* Domain first and unshortened: it is what differs
-                            between these rows, and what reputation attaches to. */}
-                        <td className="px-3 py-1.5 font-medium">{row.domain ?? "—"}</td>
-                        <td className="px-3 py-1.5 text-muted-foreground">
-                          {row.email?.split("@")[0] ?? "—"}
-                        </td>
-                        <td className="tnum px-3 py-1.5 text-right">{fullNumber(row.sent)}</td>
-                        <td className="tnum px-3 py-1.5 text-right text-muted-foreground">
-                          {fullNumber(row.bounced)}
-                        </td>
-                        <td className="px-3 py-1.5 text-right">
-                          <BounceMeter rate={row.bounce_rate} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          ) : null}
-
-          <section>
+        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <section className="order-2 min-w-0 xl:order-1">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-0.5 rounded-md border p-0.5">
                 {(
@@ -337,34 +298,42 @@ export function InfrastructureView() {
               </p>
             </div>
 
+            {/*
+              * table-fixed with percentage widths. With `auto`, the browser
+              * gives every spare pixel to the widest text column — the domain —
+              * which reopened the dead zone between a name and its numbers.
+              * Fixed shares spread the slack across all seven columns, so
+              * nothing strands and every column breathes.
+              */}
             <div className="overflow-hidden rounded-lg border">
-              <table className="w-full text-xs">
+              <table className="w-full table-fixed text-xs">
                 <thead className="border-b bg-muted/40 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
                   <tr>
                     {rowsView === "inbox" ? (
                       <>
-                        <th className="px-3 py-2 font-medium">Domain</th>
-                        <th className="w-44 px-3 py-2 font-medium">Mailbox</th>
-                        <th className="w-40 px-3 py-2 font-medium">Provider</th>
+                        <th className="w-[24%] px-3 py-2 font-medium">Domain</th>
+                        <th className="w-[13%] px-3 py-2 font-medium">Mailbox</th>
+                        <th className="w-[13%] px-3 py-2 font-medium">Provider</th>
                       </>
                     ) : (
                       <>
-                        <th className="px-3 py-2 font-medium">
+                        <th className="w-[30%] px-3 py-2 font-medium">
                           {rowsView === "domain" ? "Domain" : "Provider"}
                         </th>
-                        <th className="w-24 px-3 py-2 text-right font-medium">Inboxes</th>
+                        <th className="w-[10%] px-3 py-2 text-right font-medium">Inboxes</th>
                       </>
                     )}
-                    <th className="w-24 px-3 py-2 text-right font-medium">Sent</th>
-                    <th className="w-24 px-3 py-2 text-right font-medium">Replies</th>
-                    <th className="w-24 px-3 py-2 text-right font-medium">Reply %</th>
-                    <th className="w-64 px-3 py-2 text-right font-medium">Bounce rate</th>
+                    <th className="w-[10%] px-3 py-2 text-right font-medium">Sent</th>
+                    <th className="w-[10%] px-3 py-2 text-right font-medium">Bounced</th>
+                    <th className="w-[9%] px-3 py-2 text-right font-medium">Replies</th>
+                    <th className="w-[9%] px-3 py-2 text-right font-medium">Reply %</th>
+                    <th className="px-3 py-2 text-right font-medium">Bounce rate</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {!data?.rows.length ? (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                      <td colSpan={8} className="p-8 text-center text-muted-foreground">
                         Nothing to show. Run sync-senders if this is unexpected.
                       </td>
                     </tr>
@@ -376,11 +345,16 @@ export function InfrastructureView() {
                         <tr key={inbox?.id ?? group?.label ?? i} className="hover:bg-accent/40">
                           {inbox ? (
                             <>
-                              <td className="px-3 py-1.5 font-medium">{inbox.domain ?? "—"}</td>
-                              <td className="px-3 py-1.5 text-muted-foreground">
+                              <td
+                                className="truncate px-3 py-1.5 font-medium"
+                                title={inbox.domain ?? ""}
+                              >
+                                {inbox.domain ?? "—"}
+                              </td>
+                              <td className="truncate px-3 py-1.5 text-muted-foreground">
                                 {inbox.email?.split("@")[0] ?? "—"}
                               </td>
-                              <td className="px-3 py-1.5 text-muted-foreground">
+                              <td className="truncate px-3 py-1.5 text-muted-foreground">
                                 {providerLabel(inbox.provider)}
                                 {/* Status only when it is NOT the norm — 1,470
                                     rows reading "Connected" is not information. */}
@@ -393,7 +367,10 @@ export function InfrastructureView() {
                             </>
                           ) : (
                             <>
-                              <td className="px-3 py-1.5 font-medium">
+                              <td
+                                className="truncate px-3 py-1.5 font-medium"
+                                title={group!.label}
+                              >
                                 {rowsView === "provider" ? providerLabel(group!.label) : group!.label}
                               </td>
                               <td className="tnum px-3 py-1.5 text-right text-muted-foreground">
@@ -402,6 +379,9 @@ export function InfrastructureView() {
                             </>
                           )}
                           <td className="tnum px-3 py-1.5 text-right">{fullNumber(row.sent)}</td>
+                          <td className="tnum px-3 py-1.5 text-right text-muted-foreground">
+                            {fullNumber(row.bounced)}
+                          </td>
                           <td className="tnum px-3 py-1.5 text-right text-muted-foreground">
                             {fullNumber(row.replied)}
                           </td>
@@ -420,20 +400,66 @@ export function InfrastructureView() {
             </div>
           </section>
 
-          {/*
-            * Demoted to a footnote. It used to sit above the data, so the first
-            * thing the page said was a caveat — but it still has to be said:
-            * the date range in the filter bar does not apply here, and a filter
-            * that visibly does nothing is worse than no filter.
-            */}
-          <p className="max-w-3xl text-[11px] leading-relaxed text-muted-foreground">
-            <strong className="font-medium text-foreground">Lifetime figures.</strong> These do
-            not respond to the date range above — EmailBison reports per-inbox performance only
-            as running totals. They also will not match the campaign totals in Analytics
-            exactly: warm-up sends and inboxes attached to deleted campaigns count here but not
-            there.
-          </p>
+          {problems.length ? (
+            <aside className="order-1 min-w-0 xl:order-2 xl:sticky xl:top-0">
+              <div className="mb-2 flex items-baseline gap-2">
+                <h2 className="text-xs font-medium uppercase tracking-wider">Needs attention</h2>
+                <p className="text-xs text-muted-foreground">{data?.minSent}+ sends</p>
+              </div>
+
+              <div className="rounded-lg border">
+                <p className="border-b bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+                  {highCount > 0
+                    ? `${highCount} inbox${highCount === 1 ? "" : "es"} at or above ${percent(HIGH, 0)} bounce`
+                    : "Worst bounce rates"}
+                </p>
+                <ul className="divide-y">
+                  {problems.map((row) => (
+                    <li key={row.id} className="px-3 py-2 hover:bg-accent/40">
+                      {/* Stacked rather than tabular: in a 360px rail the
+                          domain needs the full line to stay readable, which was
+                          the whole point of the rebuild. */}
+                      <div className="flex items-baseline gap-2">
+                        <span className="min-w-0 flex-1 truncate font-medium" title={row.domain ?? ""}>
+                          {row.domain ?? "—"}
+                        </span>
+                        <span
+                          className={cn(
+                            "tnum shrink-0 text-xs font-medium",
+                            (row.bounce_rate ?? 0) >= HIGH ? "text-red-700" : "text-amber-700",
+                          )}
+                        >
+                          {percent(row.bounce_rate, 2)}
+                        </span>
+                      </div>
+                      <div className="tnum mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <span className="min-w-0 flex-1 truncate">
+                          {row.email?.split("@")[0] ?? "—"}
+                        </span>
+                        <span>
+                          {fullNumber(row.bounced)} of {fullNumber(row.sent)}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </aside>
+          ) : null}
         </div>
+
+        {/*
+          * Demoted to a footnote. It used to sit above the data, so the first
+          * thing the page said was a caveat — but it still has to be said: the
+          * date range in the filter bar does not apply here, and a filter that
+          * visibly does nothing is worse than no filter.
+          */}
+        <p className="mt-6 max-w-3xl text-[11px] leading-relaxed text-muted-foreground">
+          <strong className="font-medium text-foreground">Lifetime figures.</strong> These do not
+          respond to the date range above — EmailBison reports per-inbox performance only as
+          running totals. They also will not match the campaign totals in Analytics exactly:
+          warm-up sends and inboxes attached to deleted campaigns count here but not there.
+        </p>
       </div>
     </div>
   );
