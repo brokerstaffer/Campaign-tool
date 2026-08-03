@@ -12,6 +12,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAnalyticsFilters } from "@/components/analytics/filters-context";
+import { CampaignPicker } from "@/components/analytics/campaign-picker";
 import {
   COPY_DIMENSIONS, awardMedals, dimensionLabel, MEDAL_MIN_SENT,
 } from "@/lib/analytics/copy-dimensions.ts";
@@ -582,6 +583,7 @@ export function CopyOfferView() {
         onOpenChange={setCreating}
         onCreated={() => {
           void queryClient.invalidateQueries({ queryKey: ["offers"] });
+          void queryClient.invalidateQueries({ queryKey: ["offer-suggestions"] });
           setCreating(false);
         }}
       />
@@ -589,7 +591,14 @@ export function CopyOfferView() {
         offer={editing}
         onClose={() => setEditing(null)}
         onSaved={() => {
+          /*
+           * BOTH caches. Deleting an offer frees its campaigns, which makes the
+           * group they came from suggestable again — but the suggestions query
+           * kept serving its old empty result, so the group simply vanished.
+           * Every offer mutation changes what is suggestable.
+           */
           void queryClient.invalidateQueries({ queryKey: ["offers"] });
+          void queryClient.invalidateQueries({ queryKey: ["offer-suggestions"] });
           setEditing(null);
         }}
       />
@@ -610,16 +619,6 @@ function CreateOfferDialog({
   const [niche, setNiche] = useState("");
   const [campaignId, setCampaignId] = useState<number | null>(null);
 
-  const campaigns = useQuery<{ items: Array<{ id: number; name: string; status: string }> }>({
-    queryKey: ["campaigns", "all", ""],
-    queryFn: async () => {
-      const response = await fetch("/api/campaigns?status=all");
-      if (!response.ok) throw new Error("Failed to load campaigns");
-      return response.json();
-    },
-    enabled: open,
-    staleTime: 60_000,
-  });
 
   const create = useMutation({
     mutationFn: async () => {
@@ -673,18 +672,9 @@ function CreateOfferDialog({
           </label>
           <label className="block">
             <span className="text-xs font-medium">Sequence from</span>
-            <select
-              value={campaignId ?? ""}
-              onChange={(e) => setCampaignId(e.target.value ? Number(e.target.value) : null)}
-              className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-sm"
-            >
-              <option value="">Choose a campaign…</option>
-              {(campaigns.data?.items ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1">
+              <CampaignPicker value={campaignId} onChange={setCampaignId} />
+            </div>
             {/* The offer IS a sequence, so it needs one to be worth anything. */}
             <span className="mt-1 block text-[11px] text-muted-foreground">
               This campaign&apos;s sequence becomes the offer&apos;s, and is what gets copied to
@@ -730,16 +720,6 @@ function DeployDialog({ offer, onClose }: { offer: OfferRow | null; onClose: () 
   const [targetId, setTargetId] = useState<number | null>(null);
   const [mode, setMode] = useState<"append" | "replace">("append");
 
-  const campaigns = useQuery<{ items: Array<{ id: number; name: string; status: string }> }>({
-    queryKey: ["campaigns", "all", ""],
-    queryFn: async () => {
-      const response = await fetch("/api/campaigns?status=all");
-      if (!response.ok) throw new Error("Failed to load campaigns");
-      return response.json();
-    },
-    enabled: Boolean(offer),
-    staleTime: 60_000,
-  });
 
   const deploy = useMutation({
     mutationFn: async () => {
@@ -784,20 +764,13 @@ function DeployDialog({ offer, onClose }: { offer: OfferRow | null; onClose: () 
 
           <label className="block">
             <span className="text-xs font-medium">Target campaign</span>
-            <select
-              value={targetId ?? ""}
-              onChange={(e) => setTargetId(e.target.value ? Number(e.target.value) : null)}
-              className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-sm"
-            >
-              <option value="">Choose a campaign…</option>
-              {(campaigns.data?.items ?? [])
-                .filter((c) => c.id !== offer.source?.source_campaign_id)
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} · {c.status}
-                  </option>
-                ))}
-            </select>
+            <div className="mt-1">
+              <CampaignPicker
+                value={targetId}
+                onChange={setTargetId}
+                exclude={offer.source?.source_campaign_id ?? null}
+              />
+            </div>
           </label>
 
           <div className="flex gap-3 text-xs">
@@ -992,16 +965,6 @@ function EditOfferDialog({
     setSourceId(offer.source?.source_campaign_id ?? null);
   }
 
-  const campaigns = useQuery<{ items: Array<{ id: number; name: string }> }>({
-    queryKey: ["campaigns", "all", ""],
-    queryFn: async () => {
-      const response = await fetch("/api/campaigns?status=all");
-      if (!response.ok) throw new Error("Failed to load campaigns");
-      return response.json();
-    },
-    enabled: Boolean(offer),
-    staleTime: 60_000,
-  });
 
   const save = useMutation({
     mutationFn: async () => {
@@ -1056,18 +1019,13 @@ function EditOfferDialog({
           </label>
           <label className="block">
             <span className="text-xs font-medium">Sequence from</span>
-            <select
-              value={sourceId ?? ""}
-              onChange={(e) => setSourceId(e.target.value ? Number(e.target.value) : null)}
-              className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-sm"
-            >
-              <option value="">Highest-volume campaign (automatic)</option>
-              {(campaigns.data?.items ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1">
+              <CampaignPicker
+                value={sourceId}
+                onChange={setSourceId}
+                emptyLabel="Highest-volume campaign (automatic)"
+              />
+            </div>
             <span className="mt-1 block text-[11px] text-muted-foreground">
               Campaigns in an offer drift apart as they are edited, so this picks which version
               gets copied. Left automatic, it follows the highest-volume one.
