@@ -31,6 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { SyncButton } from "@/components/analytics/sync-button";
 import { fullNumber } from "@/lib/analytics/format.ts";
 import {
   CAMPAIGN_STATUSES,
@@ -210,6 +211,9 @@ export function CampaignsPage() {
         {isFetching ? (
           <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
         ) : null}
+        <div className="ml-auto">
+          <SyncButton />
+        </div>
       </header>
 
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b px-6 py-2.5">

@@ -199,6 +199,38 @@ export const syncEntities: JobFn = async ({ teamId }): Promise<JobResult> => {
 
   await chunkUpsert("campaign_clients", mappings, "campaign_id");
 
+  /*
+   * Reconcile removals. Upserting alone meant a campaign deleted in EmailBison
+   * lived on in the cache forever — still in the picker, still selectable as a
+   * copy target.
+   *
+   * Soft, because campaigns is the parent of the day-stats, step-stats,
+   * sequence-steps and client-mapping tables with ON DELETE CASCADE: dropping
+   * the row would erase that campaign's history from every chart. The sends
+   * happened.
+   *
+   * And reversible, because EmailBison deletes asynchronously ("queued for
+   * deletion") — a campaign can briefly vanish and come back, and a one-way
+   * flag would permanently hide a live campaign over a transient blip.
+   */
+  const liveIds = campaigns.map((c) => c.id);
+  const [gone, back] = await Promise.all([
+    sb
+      .from("campaigns")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("team_id", teamId)
+      .is("deleted_at", null)
+      .not("id", "in", `(${liveIds.join(",")})`)
+      .select("id"),
+    sb
+      .from("campaigns")
+      .update({ deleted_at: null })
+      .eq("team_id", teamId)
+      .not("deleted_at", "is", null)
+      .in("id", liveIds)
+      .select("id"),
+  ]);
+
   return {
     rowsWritten: campaigns.length + mappings.length,
     apiCalls,
@@ -208,6 +240,8 @@ export const syncEntities: JobFn = async ({ teamId }): Promise<JobResult> => {
       portalClients,
       unassigned: mappings.filter((m) => !m.excluded && !m.client_id).length,
       excluded: mappings.filter((m) => m.excluded).length,
+      markedDeleted: gone.data?.length ?? 0,
+      restored: back.data?.length ?? 0,
     },
   };
 };

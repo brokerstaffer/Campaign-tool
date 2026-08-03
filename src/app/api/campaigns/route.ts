@@ -36,7 +36,9 @@ export async function GET(request: NextRequest) {
       "id, name, status, type, tags, total_leads, lifetime_emails_sent, max_emails_per_day, eb_created_at, eb_updated_at",
       { count: "estimated" },
     )
-    .eq("team_id", teamId);
+    .eq("team_id", teamId)
+    // Deleted upstream: kept for history, never offered as a choice.
+    .is("deleted_at", null);
 
   if (status !== "all") query = query.eq("status", status);
   // `ilike` with a leading wildcard can't use a btree index, but at 95 rows
@@ -50,7 +52,7 @@ export async function GET(request: NextRequest) {
     sb.from("clients").select("id, name").eq("team_id", teamId),
     // One grouped read for the status pills, so their numbers describe the
     // whole workspace rather than the current page.
-    sb.from("campaigns").select("status").eq("team_id", teamId),
+    sb.from("campaigns").select("status").eq("team_id", teamId).is("deleted_at", null),
   ]);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

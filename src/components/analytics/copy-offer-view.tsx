@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAnalyticsFilters } from "@/components/analytics/filters-context";
 import { CampaignPicker } from "@/components/analytics/campaign-picker";
+import { SyncButton } from "@/components/analytics/sync-button";
 import {
   COPY_DIMENSIONS, awardMedals, dimensionLabel, MEDAL_MIN_SENT,
 } from "@/lib/analytics/copy-dimensions.ts";
@@ -267,15 +268,18 @@ export function CopyOfferView() {
               <p className="text-sm text-muted-foreground">
                 Campaigns that open with the same email — name one to turn it into an offer
               </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCreating(true)}
-                className="ml-auto h-8 gap-1.5 text-sm"
-              >
-                <Plus className="size-3.5" />
-                Add Group
-              </Button>
+              <div className="ml-auto flex items-center gap-2">
+                <SyncButton />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCreating(true)}
+                  className="h-8 gap-1.5 text-sm"
+                >
+                  <Plus className="size-3.5" />
+                  Add Group
+                </Button>
+              </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
