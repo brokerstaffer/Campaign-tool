@@ -166,6 +166,25 @@ export function CopyOfferView() {
   return (
     <div className="min-h-0 flex-1 overflow-auto bg-muted/30">
       <div className="space-y-5 p-6">
+        {/*
+          * A page-level header that ALWAYS renders.
+          *
+          * Sync first lived in the Suggested-groups header, which was wrong
+          * twice over: it buried a page-level action inside a section, and that
+          * section is conditional — so the button vanished exactly when the
+          * cache was stale enough to have nothing to suggest, which is when you
+          * need it most.
+          */}
+        <header className="flex flex-wrap items-baseline gap-3">
+          <h1 className="text-xl font-semibold tracking-tight">Copy &amp; Offer</h1>
+          <p className="text-sm text-muted-foreground">
+            Which words work, and which offers work
+          </p>
+          <div className="ml-auto">
+            <SyncButton />
+          </div>
+        </header>
+
         {/* ---- Offer groups: only once at least one exists ---- */}
         {(offers.data?.rows?.length ?? 0) > 0 ? (
         <section>
@@ -268,18 +287,15 @@ export function CopyOfferView() {
               <p className="text-sm text-muted-foreground">
                 Campaigns that open with the same email — name one to turn it into an offer
               </p>
-              <div className="ml-auto flex items-center gap-2">
-                <SyncButton />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCreating(true)}
-                  className="h-8 gap-1.5 text-sm"
-                >
-                  <Plus className="size-3.5" />
-                  Add Group
-                </Button>
-              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCreating(true)}
+                className="ml-auto h-8 gap-1.5 text-sm"
+              >
+                <Plus className="size-3.5" />
+                Add Group
+              </Button>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
