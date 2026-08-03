@@ -173,8 +173,8 @@ export function CampaignDetail({ id }: { id: number }) {
       : null;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="shrink-0 border-b px-6 py-3">
+    <div className="flex min-h-0 flex-1 flex-col bg-muted/30">
+      <header className="shrink-0 border-b bg-card px-8 py-4">
         <Link
           href="/campaigns"
           className="mb-2 inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
@@ -256,7 +256,7 @@ export function CampaignDetail({ id }: { id: number }) {
         ) : null}
       </header>
 
-      <div className="flex shrink-0 gap-0.5 border-b px-6">
+      <div className="flex shrink-0 gap-0.5 border-b bg-card px-8">
         {TABS.map((t) => (
           <button
             key={t}
@@ -334,10 +334,11 @@ function Overview({ campaign }: { campaign: Campaign }) {
   ] as const;
 
   return (
-    <div className="max-w-4xl space-y-6">
-      <section>
+    <div className="grid items-start gap-5 xl:grid-cols-[1.3fr_1fr]">
+      <div className="space-y-5">
+      <section className="rounded-xl border bg-card p-5 shadow-sm">
         <div className="mb-1.5 flex items-baseline justify-between">
-          <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <h2 className="text-sm font-medium">
             Progress
           </h2>
           <span className="tnum text-xs text-muted-foreground">
@@ -354,9 +355,9 @@ function Overview({ campaign }: { campaign: Campaign }) {
         </div>
       </section>
 
-      <section>
-        <h2 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Funnel <span className="normal-case tracking-normal">(lifetime)</span>
+      <section className="rounded-xl border bg-card p-5 shadow-sm">
+        <h2 className="mb-3 text-sm font-medium">
+          Funnel <span className="font-normal text-muted-foreground">(lifetime)</span>
         </h2>
         <div className="space-y-1.5">
           {funnel.map((stage) => (
@@ -385,11 +386,14 @@ function Overview({ campaign }: { campaign: Campaign }) {
         </p>
       </section>
 
-      <section>
-        <h2 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+      </div>
+
+      <div className="space-y-5">
+      <section className="rounded-xl border bg-card p-5 shadow-sm">
+        <h2 className="mb-2 text-sm font-medium">
           Detail
         </h2>
-        <dl className="grid grid-cols-2 gap-x-8 sm:grid-cols-3">
+        <dl className="grid grid-cols-1 gap-x-8 sm:grid-cols-2">
           {stats.map(([label, value]) => (
             <div key={label} className="flex justify-between border-b py-1.5 text-xs">
               <dt className="text-muted-foreground">{label}</dt>
@@ -400,8 +404,8 @@ function Overview({ campaign }: { campaign: Campaign }) {
       </section>
 
       {Array.isArray(campaign.tags) && campaign.tags.length ? (
-        <section>
-          <h2 className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <section className="rounded-xl border bg-card p-5 shadow-sm">
+          <h2 className="mb-2 text-sm font-medium">
             Tags
           </h2>
           <div className="flex flex-wrap gap-1.5">
@@ -419,6 +423,7 @@ function Overview({ campaign }: { campaign: Campaign }) {
           </div>
         </section>
       ) : null}
+      </div>
     </div>
   );
 }
@@ -512,7 +517,7 @@ function Sequence({
 
   if (!steps.length) {
     return (
-      <div className="max-w-4xl space-y-3">
+      <div className="max-w-3xl space-y-3 rounded-xl border bg-card p-5 shadow-sm">
         <p className="text-sm text-muted-foreground">
           This campaign has no sequence steps cached. Run sync-steps if it has one upstream, or
           copy a sequence from another campaign.
@@ -523,10 +528,10 @@ function Sequence({
   }
 
   return (
-    <div className="max-w-4xl space-y-2">
-      <div className="flex justify-end gap-2 pb-1">{copyButton}</div>
+    <div className="space-y-3">
+      <div className="flex flex-wrap justify-end gap-2">{copyButton}</div>
       {steps.map((step, index) => (
-        <div key={step.id} className="rounded-lg border">
+        <div key={step.id} className="rounded-xl border bg-card shadow-sm">
           <button
             type="button"
             onClick={() => setOpen(open === step.id ? null : step.id)}
@@ -659,7 +664,7 @@ function Settings({ campaign }: { campaign: Campaign }) {
   ] as const;
 
   return (
-    <div className="max-w-xl space-y-5">
+    <div className="max-w-2xl space-y-5 rounded-xl border bg-card p-6 shadow-sm">
       <div className="space-y-1.5">
         <label htmlFor="name" className="text-xs font-medium">
           Campaign name
@@ -772,7 +777,7 @@ function ActivityLog({ rows }: { rows: Activity[] }) {
         <div
           key={row.id}
           className={cn(
-            "rounded-lg border p-3 text-xs",
+            "rounded-xl border bg-card p-3 text-xs shadow-sm",
             row.status === "error" && "border-red-300/60 bg-red-50/50",
           )}
         >

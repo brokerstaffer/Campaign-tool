@@ -174,6 +174,9 @@ export function CopySequenceDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
+      {/* min-w-0 is load-bearing: DialogContent is a grid, and a grid item
+          defaults to min-width:auto, so one long campaign name pushed the list
+          and the footer clean outside the dialog. */}
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
@@ -182,7 +185,7 @@ export function CopySequenceDialog({
         </DialogHeader>
 
         {stage === "pick" ? (
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -192,7 +195,7 @@ export function CopySequenceDialog({
                 className="h-8 pl-8 text-xs"
               />
             </div>
-            <div className="max-h-72 space-y-0.5 overflow-y-auto rounded-md border p-1">
+            <div className="max-h-72 min-w-0 space-y-0.5 overflow-hidden overflow-y-auto rounded-md border p-1">
               {options.length === 0 ? (
                 <p className="p-4 text-center text-xs text-muted-foreground">
                   No campaigns match
@@ -221,7 +224,7 @@ export function CopySequenceDialog({
         ) : null}
 
         {stage === "options" ? (
-          <div className="space-y-4 text-sm">
+          <div className="min-w-0 space-y-4 text-sm">
             <p className="text-xs text-muted-foreground">
               Copying from <strong className="text-foreground">{source?.name}</strong>
             </p>
@@ -295,7 +298,7 @@ export function CopySequenceDialog({
         ) : null}
 
         {stage === "review" && plan ? (
-          <div className="space-y-3 text-sm">
+          <div className="min-w-0 space-y-3 text-sm">
             {plan.warnings.map((warning, i) => (
               <p
                 key={i}

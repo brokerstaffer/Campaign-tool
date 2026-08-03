@@ -666,7 +666,7 @@ function CreateOfferDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md [&>*]:min-w-0">
         <DialogHeader>
           <DialogTitle>New offer</DialogTitle>
         </DialogHeader>
@@ -811,7 +811,7 @@ function DeployDialog({ offer, onClose }: { offer: OfferRow | null; onClose: () 
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg [&>*]:min-w-0">
         <DialogHeader>
           <DialogTitle>Copy &ldquo;{offer.offer_name}&rdquo; to a campaign</DialogTitle>
         </DialogHeader>
@@ -1124,7 +1124,7 @@ function EditOfferDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md [&>*]:min-w-0">
         <DialogHeader>
           <DialogTitle>Edit offer</DialogTitle>
         </DialogHeader>
