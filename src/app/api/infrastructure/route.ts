@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(Number(params.get("limit") ?? 100), 500);
   const offset = Math.max(Number(params.get("offset") ?? 0), 0);
 
-  const [totals, rows, problems] = await Promise.all([
+  const [totals, rows, problems, bands, providers] = await Promise.all([
     sb.rpc("analytics_sender_totals", { p_team_id: teamId }),
 
     view === "inbox"
@@ -64,12 +64,29 @@ export async function GET(request: NextRequest) {
       p_min_sent: minSent,
       p_search: null,
       p_sort: "bounce_rate",
-      p_limit: 10,
+      p_limit: 12,
       p_offset: 0,
     }),
+
+    /*
+     * The distribution. "Bounce rate 1.80%" is an average over hundreds of
+     * domains, and an average cannot distinguish a broad problem from a short
+     * tail — 480 domains at 1.2% with 13 on fire averages the same as every
+     * domain sitting at 1.8%. Those need opposite responses.
+     */
+    sb.rpc("analytics_sender_bands", { p_team_id: teamId, p_min_sent: 1 }),
+
+    /*
+     * The provider split, always — it is two rows and it belongs in the summary
+     * whatever the table below is showing. §8 asks for a provider breakdown,
+     * and "is one provider bouncing harder than the other" is a question you
+     * answer at a glance or not at all.
+     */
+    sb.rpc("analytics_sender_groups", { p_team_id: teamId, p_group: "provider", p_min_sent: 1 }),
   ]);
 
-  const failed = totals.error ?? rows.error ?? problems.error;
+  const failed =
+    totals.error ?? rows.error ?? problems.error ?? bands.error ?? providers.error;
   if (failed) {
     return NextResponse.json({ error: failed.message }, { status: 500 });
   }
@@ -82,6 +99,8 @@ export async function GET(request: NextRequest) {
     // paging doesn't need a second count query.
     total: view === "inbox" ? (rows.data?.[0]?.total_count ?? 0) : (rows.data?.length ?? 0),
     problems: problems.data ?? [],
+    bands: bands.data ?? [],
+    providers: providers.data ?? [],
     minSent,
   });
 }
