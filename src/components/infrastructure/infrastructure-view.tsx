@@ -10,50 +10,51 @@ import { cn } from "@/lib/utils";
 /*
  * The Infrastructure tab (spec §8).
  *
- * Rewritten after the first version proved unreadable. Three faults, worth
- * naming because they are easy to reintroduce:
+ * Third pass. The first two were about correctness of layout — truncated
+ * labels, missing headers, dead space. This one is about how it reads, because
+ * even once the mechanics were right it was still a wall of 12px grey text in
+ * boxes, and that is a legitimate complaint.
  *
- *  1. The inbox column was `max-w-0` + truncate, so every row rendered as
- *     "nicole.c@real…". Across 1,470 near-identical addresses that is not a
- *     shortened label, it is no label — no two rows could be told apart. The
- *     DOMAIN is what carries meaning here (one persona sends from hundreds of
- *     domains, and reputation attaches to the domain), so it gets its own
- *     column, first, with the width to show it in full.
- *  2. The problem-accounts table had no header row: two bare numbers per line
- *     and no way to know which was which.
- *  3. The page was capped at max-w-5xl on a 2000px screen, so everything fought
- *     for space in the left third while two thirds sat empty.
+ * What changed, and why each is deliberate:
  *
- * Bounce rate is the only number here anyone acts on, so it gets a meter — a
- * ratio against a limit, which is what a meter is for. Colour never carries the
- * status alone: every toned bar is accompanied by a text chip, because a status
- * hue must ship with a label.
+ *  - CHROME REMOVED. No outer borders around tables, no boxed panels. Grouping
+ *    comes from whitespace and a single hairline, so the data is the only thing
+ *    drawing ink. Boxes inside boxes are what made it look heavy.
+ *  - ROOM TO BREATHE. Rows are 13px on ~40px of height instead of 12px on 26px.
+ *    Density was costing legibility for no gain — nobody reads 493 domains, they
+ *    scan the top twenty.
+ *  - TYPE DOES THE HIERARCHY. Micro uppercase tracking-wider grey headers on
+ *    every column read as noise; headers are now plain sentence case, and weight
+ *    separates a domain from its numbers.
+ *  - THE NUMBER CARRIES THE STATUS. The WATCH/HIGH chips sat mid-row in a
+ *    different horizontal position on every line, which is what made the table
+ *    look untidy. The bounce value is now toned itself. That is not
+ *    colour-alone: the figure states its own magnitude against a threshold
+ *    printed in the header, so a reader who cannot see the tone still reads
+ *    3.86% and knows it is over 3%.
+ *  - FEWER COLUMNS. Reply count went; Reply % is the useful form of it.
  */
 
 type View = "domain" | "provider" | "inbox";
 
 /*
  * Cold-email thresholds. Sustained bounce above 3% is what gets a sending
- * domain reputation-flagged; 2% is where it is worth looking before it becomes
- * 3%. The meter is scaled to 5% so the danger zone occupies the top of the
- * track instead of pinning every bar to full.
+ * domain reputation-flagged; 2% is worth looking at before it becomes 3%. The
+ * meter is scaled to 5% so the danger zone sits at the top of the track rather
+ * than pinning every bar to full.
  */
 const WATCH = 0.02;
 const HIGH = 0.03;
 const METER_CEILING = 0.05;
 
-/*
- * Reserved status hues, never reused as series colours — and healthy rows are
- * deliberately GREY, not green.
- *
- * This is the emphasis principle: the problem rows are the point, the other 400
- * are context. Toning every healthy bar green produced a wall of colour that
- * buried the handful of rows worth acting on. Grey context, coloured exception.
- */
+/** Reserved status hues — never reused as series colours. */
 const STATUS = {
-  high: { fill: "#d03b3b", label: "high", chip: "bg-red-100 text-red-900" },
-  watch: { fill: "#fab219", label: "watch", chip: "bg-amber-100 text-amber-900" },
-  ok: { fill: "var(--color-muted-foreground)", label: "", chip: "" },
+  high: { bar: "#d03b3b", text: "text-[#b02525]" },
+  watch: { bar: "#e0900f", text: "text-[#a16207]" },
+  // Mid-grey, not border-grey: recessive next to the toned bars but still
+  // clearly a bar. At border tone it vanished into the track and a healthy
+  // row looked like a missing one.
+  ok: { bar: "#94a3b8", text: "text-foreground" },
 } as const;
 
 function statusOf(rate: number | null | undefined) {
@@ -97,45 +98,30 @@ interface Response {
   problems: InboxRow[]; minSent: number;
 }
 
-/** A ratio against a limit, with the 3% threshold marked on the track. */
-function BounceMeter({ rate }: { rate: number | null }) {
+/** Value + track. The 3% threshold is notched on the track, not just implied. */
+function Bounce({ rate }: { rate: number | null }) {
   const status = statusOf(rate);
-  if (rate == null || !status) return <span className="text-muted-foreground">–</span>;
+  if (rate == null || !status) {
+    return <span className="text-muted-foreground">–</span>;
+  }
   const width = Math.min(rate / METER_CEILING, 1) * 100;
 
-  /*
-   * Order is chip → bar → value, with the value last and fixed-width, so the
-   * numbers form one clean right-aligned column down the table. Putting the bar
-   * last left the digits ragged and pushed the meter off the edge.
-   */
   return (
-    <span className="flex items-center justify-end gap-2.5">
-      {status.label ? (
-        <span
-          className={cn(
-            "rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-            status.chip,
-          )}
-        >
-          {status.label}
-        </span>
-      ) : null}
+    <span className="flex items-center justify-end gap-3">
       <span
-        className="relative hidden h-1.5 w-24 shrink-0 overflow-hidden rounded-full bg-muted md:block"
+        className="relative hidden h-[3px] w-24 shrink-0 overflow-hidden rounded-full bg-muted lg:block"
         aria-hidden
       >
         <span
-          className="absolute inset-y-0 left-0 rounded-full opacity-90"
-          style={{ width: `${width}%`, backgroundColor: status.fill }}
+          className="absolute inset-y-0 left-0 rounded-full"
+          style={{ width: `${width}%`, backgroundColor: status.bar }}
         />
-        {/* The 3% line, so a bar reads against the threshold rather than only
-            against its neighbours. */}
         <span
-          className="absolute inset-y-0 w-px bg-foreground/30"
+          className="absolute inset-y-0 w-px bg-foreground/20"
           style={{ left: `${(HIGH / METER_CEILING) * 100}%` }}
         />
       </span>
-      <span className={cn("tnum w-14 text-right", status.label && "font-medium")}>
+      <span className={cn("tnum w-14 text-right tabular-nums", status.text)}>
         {percent(rate, 2)}
       </span>
     </span>
@@ -162,30 +148,26 @@ export function InfrastructureView() {
 
   const totals = data?.totals;
   const problems = data?.problems ?? [];
+  const highCount = problems.filter((p) => (p.bounce_rate ?? 0) >= HIGH).length;
 
   /*
    * Render from the shape the rows ACTUALLY have, not from the toggle's state.
-   *
-   * `keepPreviousData` deliberately holds the previous view's rows on screen
-   * while the new ones load — but `view` flips instantly, so for one render the
-   * component was reading domain rows as inbox rows and calling .split() on an
-   * `email` that isn't there. That crashed the whole tab with a client-side
-   * exception, not a blank table.
-   *
-   * The response echoes the view it was built for; that is the authority for
-   * how to draw a row. The buttons still track `view` so the UI stays
-   * responsive to the click.
+   * keepPreviousData holds the previous view's rows while the next load runs,
+   * and `view` flips instantly — reading a domain row as an inbox row crashed
+   * the tab. The response echoes the view it was built for; that is the
+   * authority for how to draw a row.
    */
   const rowsView = data?.view ?? view;
-  const highCount = problems.filter((p) => (p.bounce_rate ?? 0) >= HIGH).length;
+
+  const label = { domain: "Domain", provider: "Provider", inbox: "Domain" }[rowsView];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b px-6">
-        <h1 className="text-sm font-medium">Infrastructure</h1>
+      <header className="flex items-baseline gap-3 px-8 pb-4 pt-6">
+        <h1 className="text-lg font-semibold tracking-tight">Infrastructure</h1>
         {totals ? (
-          <p className="tnum text-xs text-muted-foreground">
-            {fullNumber(totals.sending)} of {fullNumber(totals.inboxes)} inboxes sending ·{" "}
+          <p className="tnum text-sm text-muted-foreground">
+            {fullNumber(totals.sending)} of {fullNumber(totals.inboxes)} inboxes sending across{" "}
             {fullNumber(totals.domains)} domains
           </p>
         ) : null}
@@ -194,75 +176,71 @@ export function InfrastructureView() {
         ) : null}
       </header>
 
-      {/* Hairline grid, no cards — the same treatment as the Campaign KPI band. */}
+      {/* Stats, unboxed: generous numbers separated by space, not borders. */}
       {totals ? (
-        <section className="grid shrink-0 grid-cols-2 divide-x border-b sm:grid-cols-4">
+        <section className="grid grid-cols-2 gap-y-6 px-8 pb-7 sm:grid-cols-4">
           {(
             [
-              ["Sent", compactNumber(totals.sent), null],
-              ["Bounced", compactNumber(totals.bounced), null],
-              ["Bounce rate", percent(totals.bounce_rate, 2), statusOf(totals.bounce_rate)],
-              ["Reply rate", percent(totals.reply_rate, 2), null],
+              ["Sent", compactNumber(totals.sent), null, null],
+              [
+                "Bounced",
+                compactNumber(totals.bounced),
+                null,
+                // NOT the bounce rate — the tile beside this one already says
+                // it. Inbox counts are the fact this tile can add.
+                `across ${fullNumber(totals.sending)} sending inboxes`,
+              ],
+              [
+                "Bounce rate",
+                percent(totals.bounce_rate, 2),
+                statusOf(totals.bounce_rate),
+                `${percent(HIGH, 0)} is the danger line`,
+              ],
+              ["Reply rate", percent(totals.reply_rate, 2), null, null],
             ] as const
-          ).map(([label, value, status]) => (
-            <div key={label} className="px-6 py-3">
-              <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
-                {label}
-              </p>
-              <p className="tnum mt-1 flex items-baseline gap-2 text-xl">
+          ).map(([name, value, status, hint]) => (
+            <div key={name}>
+              <p className="text-xs font-medium text-muted-foreground">{name}</p>
+              <p
+                className={cn(
+                  "tnum mt-1.5 text-3xl font-semibold tracking-tight",
+                  status?.text,
+                )}
+              >
                 {value}
-                {status?.label ? (
-                  <span
-                    className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", status.chip)}
-                  >
-                    {status.label}
-                  </span>
-                ) : null}
               </p>
+              {hint ? (
+                <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+              ) : null}
             </div>
           ))}
         </section>
       ) : null}
 
-      {/*
-        * Two columns on a wide screen, not one narrow one.
-        *
-        * The previous version capped everything at 1440px, which on a 2560px
-        * monitor left a third of the screen empty directly beneath a
-        * full-bleed KPI band — the table read as stranded on the left. Simply
-        * removing the cap is not the fix either: stretching six columns across
-        * 2500px reopens the dead zone between a domain and its numbers.
-        *
-        * So the width goes to a SECOND thing. The breakdown takes the main
-        * column, the alert list becomes a side rail that stays visible while
-        * the 493-row table scrolls, and every column keeps a sane measure.
-        * On narrower screens they stack, alert first — it is the part you act
-        * on.
-        */}
-      <div className="min-h-0 flex-1 overflow-auto px-6 py-5">
-        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="min-h-0 flex-1 overflow-auto px-8 pb-8">
+        <div className="grid items-start gap-x-10 gap-y-8 xl:grid-cols-[minmax(0,1fr)_300px]">
           <section className="order-2 min-w-0 xl:order-1">
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-0.5 rounded-md border p-0.5">
+            <div className="flex flex-wrap items-center gap-2 pb-3">
+              <div className="flex items-center gap-1 rounded-lg bg-muted/60 p-0.5">
                 {(
                   [
-                    ["domain", "By domain"],
-                    ["provider", "By provider"],
-                    ["inbox", "By inbox"],
+                    ["domain", "Domain"],
+                    ["provider", "Provider"],
+                    ["inbox", "Inbox"],
                   ] as const
-                ).map(([key, label]) => (
+                ).map(([key, text]) => (
                   <button
                     key={key}
                     type="button"
                     onClick={() => setView(key)}
                     className={cn(
-                      "rounded px-2.5 py-1 text-xs transition-colors",
+                      "rounded-md px-3 py-1 text-[13px] transition-colors",
                       view === key
-                        ? "bg-accent font-medium text-foreground"
+                        ? "bg-background font-medium text-foreground shadow-sm"
                         : "text-muted-foreground hover:text-foreground",
                     )}
                   >
-                    {label}
+                    {text}
                   </button>
                 ))}
               </div>
@@ -270,19 +248,19 @@ export function InfrastructureView() {
               {view === "inbox" ? (
                 <>
                   <div className="relative min-w-[200px] max-w-xs flex-1">
-                    <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       placeholder="Search inbox or domain…"
-                      className="h-8 pl-8 text-xs"
+                      className="h-9 rounded-lg pl-9 text-[13px]"
                     />
                   </div>
                   <select
                     value={sort}
                     onChange={(e) => setSort(e.target.value)}
                     aria-label="Sort inboxes"
-                    className="h-8 rounded-md border bg-background px-2 text-xs"
+                    className="h-9 rounded-lg border bg-background px-2.5 text-[13px]"
                   >
                     <option value="sent">Most sent</option>
                     <option value="bounce_rate">Worst bounce rate</option>
@@ -291,7 +269,7 @@ export function InfrastructureView() {
                 </>
               ) : null}
 
-              <p className="tnum ml-auto text-xs text-muted-foreground">
+              <p className="tnum ml-auto text-[13px] text-muted-foreground">
                 {rowsView === "inbox"
                   ? `${fullNumber(data?.total ?? 0)} inboxes`
                   : `${fullNumber(data?.rows.length ?? 0)} ${rowsView === "domain" ? "domains" : "providers"}`}
@@ -299,162 +277,164 @@ export function InfrastructureView() {
             </div>
 
             {/*
-              * table-fixed with percentage widths. With `auto`, the browser
-              * gives every spare pixel to the widest text column — the domain —
-              * which reopened the dead zone between a name and its numbers.
-              * Fixed shares spread the slack across all seven columns, so
-              * nothing strands and every column breathes.
+              * table-fixed: with `auto` the browser hands every spare pixel to
+              * the widest text column, so the domain ran to ~1100px while its
+              * numbers huddled at the far right. Fixed shares spread the slack.
               */}
-            <div className="overflow-hidden rounded-lg border">
-              <table className="w-full table-fixed text-xs">
-                <thead className="border-b bg-muted/40 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
-                  <tr>
-                    {rowsView === "inbox" ? (
-                      <>
-                        <th className="w-[24%] px-3 py-2 font-medium">Domain</th>
-                        <th className="w-[13%] px-3 py-2 font-medium">Mailbox</th>
-                        <th className="w-[13%] px-3 py-2 font-medium">Provider</th>
-                      </>
-                    ) : (
-                      <>
-                        <th className="w-[30%] px-3 py-2 font-medium">
-                          {rowsView === "domain" ? "Domain" : "Provider"}
-                        </th>
-                        <th className="w-[10%] px-3 py-2 text-right font-medium">Inboxes</th>
-                      </>
-                    )}
-                    <th className="w-[10%] px-3 py-2 text-right font-medium">Sent</th>
-                    <th className="w-[10%] px-3 py-2 text-right font-medium">Bounced</th>
-                    <th className="w-[9%] px-3 py-2 text-right font-medium">Replies</th>
-                    <th className="w-[9%] px-3 py-2 text-right font-medium">Reply %</th>
-                    <th className="px-3 py-2 text-right font-medium">Bounce rate</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {!data?.rows.length ? (
-                    <tr>
-                      <td colSpan={8} className="p-8 text-center text-muted-foreground">
-                        Nothing to show. Run sync-senders if this is unexpected.
-                      </td>
-                    </tr>
+            <table className="w-full table-fixed text-[13px]">
+              <thead>
+                <tr className="border-b text-left text-xs font-medium text-muted-foreground">
+                  {rowsView === "inbox" ? (
+                    <>
+                      <th className="w-[26%] py-2.5 pr-4 font-medium">{label}</th>
+                      <th className="w-[14%] py-2.5 pr-4 font-medium">Mailbox</th>
+                      <th className="w-[15%] py-2.5 pr-4 font-medium">Provider</th>
+                    </>
                   ) : (
-                    data.rows.map((row, i) => {
-                      const inbox = rowsView === "inbox" ? (row as InboxRow) : null;
-                      const group = inbox ? null : (row as GroupRow);
-                      return (
-                        <tr key={inbox?.id ?? group?.label ?? i} className="hover:bg-accent/40">
-                          {inbox ? (
-                            <>
-                              <td
-                                className="truncate px-3 py-1.5 font-medium"
-                                title={inbox.domain ?? ""}
-                              >
-                                {inbox.domain ?? "—"}
-                              </td>
-                              <td className="truncate px-3 py-1.5 text-muted-foreground">
-                                {inbox.email?.split("@")[0] ?? "—"}
-                              </td>
-                              <td className="truncate px-3 py-1.5 text-muted-foreground">
-                                {providerLabel(inbox.provider)}
-                                {/* Status only when it is NOT the norm — 1,470
-                                    rows reading "Connected" is not information. */}
-                                {inbox.status && inbox.status !== "Connected" ? (
-                                  <span className="ml-1.5 rounded bg-amber-100 px-1 text-[10px] text-amber-900">
-                                    {inbox.status}
-                                  </span>
-                                ) : null}
-                              </td>
-                            </>
-                          ) : (
-                            <>
-                              <td
-                                className="truncate px-3 py-1.5 font-medium"
-                                title={group!.label}
-                              >
-                                {rowsView === "provider" ? providerLabel(group!.label) : group!.label}
-                              </td>
-                              <td className="tnum px-3 py-1.5 text-right text-muted-foreground">
-                                {fullNumber(group!.inboxes)}
-                              </td>
-                            </>
-                          )}
-                          <td className="tnum px-3 py-1.5 text-right">{fullNumber(row.sent)}</td>
-                          <td className="tnum px-3 py-1.5 text-right text-muted-foreground">
-                            {fullNumber(row.bounced)}
-                          </td>
-                          <td className="tnum px-3 py-1.5 text-right text-muted-foreground">
-                            {fullNumber(row.replied)}
-                          </td>
-                          <td className="tnum px-3 py-1.5 text-right">
-                            {percent(row.reply_rate, 2)}
-                          </td>
-                          <td className="px-3 py-1.5 text-right">
-                            <BounceMeter rate={row.bounce_rate} />
-                          </td>
-                        </tr>
-                      );
-                    })
+                    <>
+                      <th className="w-[26%] py-2.5 pr-4 font-medium">{label}</th>
+                      <th className="w-[11%] py-2.5 pr-4 text-right font-medium">Inboxes</th>
+                    </>
                   )}
-                </tbody>
-              </table>
-            </div>
+                  <th className="w-[12%] py-2.5 pr-4 text-right font-medium">Sent</th>
+                  <th className="w-[12%] py-2.5 pr-4 text-right font-medium">Bounced</th>
+                  <th className="w-[12%] py-2.5 pr-4 text-right font-medium">Reply&nbsp;%</th>
+                  <th className="py-2.5 text-right font-medium">
+                    Bounce rate
+                    <span className="ml-1.5 font-normal text-muted-foreground/70">
+                      · line at {percent(HIGH, 0)}
+                    </span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {!data?.rows.length ? (
+                  <tr>
+                    <td colSpan={7} className="py-16 text-center text-muted-foreground">
+                      Nothing to show. Run sync-senders if this is unexpected.
+                    </td>
+                  </tr>
+                ) : (
+                  data.rows.map((row, i) => {
+                    const inbox = rowsView === "inbox" ? (row as InboxRow) : null;
+                    const group = inbox ? null : (row as GroupRow);
+                    return (
+                      <tr
+                        key={inbox?.id ?? group?.label ?? i}
+                        className="transition-colors hover:bg-muted/40"
+                      >
+                        {inbox ? (
+                          <>
+                            <td
+                              className="truncate py-2.5 pr-4 font-medium"
+                              title={inbox.domain ?? ""}
+                            >
+                              {inbox.domain ?? "—"}
+                            </td>
+                            <td className="truncate py-2.5 pr-4 text-muted-foreground">
+                              {inbox.email?.split("@")[0] ?? "—"}
+                            </td>
+                            <td className="truncate py-2.5 pr-4 text-muted-foreground">
+                              {providerLabel(inbox.provider)}
+                              {/* Status only when it is NOT the norm — 1,470
+                                  rows reading "Connected" is not information. */}
+                              {inbox.status && inbox.status !== "Connected" ? (
+                                <span className="ml-1.5 rounded bg-amber-100 px-1 text-[11px] text-amber-900">
+                                  {inbox.status}
+                                </span>
+                              ) : null}
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td
+                              className="truncate py-2.5 pr-4 font-medium"
+                              title={group!.label}
+                            >
+                              {rowsView === "provider"
+                                ? providerLabel(group!.label)
+                                : group!.label}
+                            </td>
+                            <td className="tnum py-2.5 pr-4 text-right text-muted-foreground">
+                              {fullNumber(group!.inboxes)}
+                            </td>
+                          </>
+                        )}
+                        <td className="tnum py-2.5 pr-4 text-right">{fullNumber(row.sent)}</td>
+                        <td className="tnum py-2.5 pr-4 text-right text-muted-foreground">
+                          {fullNumber(row.bounced)}
+                        </td>
+                        <td className="tnum py-2.5 pr-4 text-right text-muted-foreground">
+                          {percent(row.reply_rate, 2)}
+                        </td>
+                        <td className="py-2.5">
+                          <Bounce rate={row.bounce_rate} />
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </section>
 
           {problems.length ? (
             <aside className="order-1 min-w-0 xl:order-2 xl:sticky xl:top-0">
-              <div className="mb-2 flex items-baseline gap-2">
-                <h2 className="text-xs font-medium uppercase tracking-wider">Needs attention</h2>
-                <p className="text-xs text-muted-foreground">{data?.minSent}+ sends</p>
+              <div className="pb-3">
+                <h2 className="text-[13px] font-medium">Needs attention</h2>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {highCount > 0
+                    ? `${highCount} inbox${highCount === 1 ? "" : "es"} over ${percent(HIGH, 0)} bounce`
+                    : "Worst bounce rates"}
+                  , {data?.minSent}+ sends
+                </p>
               </div>
 
-              <div className="rounded-lg border">
-                <p className="border-b bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
-                  {highCount > 0
-                    ? `${highCount} inbox${highCount === 1 ? "" : "es"} at or above ${percent(HIGH, 0)} bounce`
-                    : "Worst bounce rates"}
-                </p>
-                <ul className="divide-y">
-                  {problems.map((row) => (
-                    <li key={row.id} className="px-3 py-2 hover:bg-accent/40">
-                      {/* Stacked rather than tabular: in a 360px rail the
-                          domain needs the full line to stay readable, which was
-                          the whole point of the rebuild. */}
-                      <div className="flex items-baseline gap-2">
-                        <span className="min-w-0 flex-1 truncate font-medium" title={row.domain ?? ""}>
+              <ul className="divide-y divide-border/60 border-t border-border/60">
+                {problems.map((row) => {
+                  const status = statusOf(row.bounce_rate);
+                  return (
+                    <li
+                      key={row.id}
+                      className="group flex items-center gap-3 py-2.5 transition-colors hover:bg-muted/40"
+                    >
+                      {/* A 2px rule instead of a chip: it marks severity without
+                          adding a floating badge to every line. */}
+                      <span
+                        className="h-8 w-0.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: status?.bar }}
+                        aria-hidden
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span
+                          className="block truncate text-[13px] font-medium"
+                          title={row.domain ?? ""}
+                        >
                           {row.domain ?? "—"}
                         </span>
-                        <span
-                          className={cn(
-                            "tnum shrink-0 text-xs font-medium",
-                            (row.bounce_rate ?? 0) >= HIGH ? "text-red-700" : "text-amber-700",
-                          )}
-                        >
-                          {percent(row.bounce_rate, 2)}
+                        <span className="tnum block truncate text-xs text-muted-foreground">
+                          {row.email?.split("@")[0] ?? "—"} · {fullNumber(row.bounced)} of{" "}
+                          {fullNumber(row.sent)}
                         </span>
-                      </div>
-                      <div className="tnum mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-                        <span className="min-w-0 flex-1 truncate">
-                          {row.email?.split("@")[0] ?? "—"}
-                        </span>
-                        <span>
-                          {fullNumber(row.bounced)} of {fullNumber(row.sent)}
-                        </span>
-                      </div>
+                      </span>
+                      <span className={cn("tnum shrink-0 text-[13px] font-medium", status?.text)}>
+                        {percent(row.bounce_rate, 2)}
+                      </span>
                     </li>
-                  ))}
-                </ul>
-              </div>
+                  );
+                })}
+              </ul>
             </aside>
           ) : null}
         </div>
 
         {/*
-          * Demoted to a footnote. It used to sit above the data, so the first
+          * A footnote, not a banner. It used to sit above the data so the first
           * thing the page said was a caveat — but it still has to be said: the
           * date range in the filter bar does not apply here, and a filter that
           * visibly does nothing is worse than no filter.
           */}
-        <p className="mt-6 max-w-3xl text-[11px] leading-relaxed text-muted-foreground">
+        <p className="mt-10 max-w-3xl border-t pt-4 text-xs leading-relaxed text-muted-foreground">
           <strong className="font-medium text-foreground">Lifetime figures.</strong> These do not
           respond to the date range above — EmailBison reports per-inbox performance only as
           running totals. They also will not match the campaign totals in Analytics exactly:
