@@ -8,6 +8,7 @@ import type {
   EBCampaignStats,
   EBConversationThread,
   EBDailySeriesResponse,
+  EBLead,
   EBReply,
   EBSenderEmail,
   EBSequenceStepsResponse,
@@ -105,43 +106,63 @@ export class EmailBisonClient {
   }
 
   /**
-   * Walks a Laravel-style paginated endpoint to exhaustion.
+   * Walks an index endpoint to exhaustion using CURSOR pagination.
    *
-   * `maxPages` is a runaway guard, not a limit we expect to hit — without it, a
-   * malformed `meta` (last_page: null) spins forever against a live API.
+   * Cursor, not page numbers, for a reason that bites silently:
+   *
+   *   "Traditional page based pagination is automatically limited to 1000 pages
+   *    for all index routes"  — docs.emailbison.com/get-started/pagination
+   *
+   * Pages are a fixed 15 rows and `per_page` is IGNORED on every endpoint
+   * (verified against /api/leads, /api/replies, /api/campaigns and
+   * /api/sender-emails). 1000 pages x 15 is a hard ceiling of 15,000 records,
+   * reached with no error and no marker — the walk just ends. Replies stand at
+   * ~8,000 today, so page-based paging would have started dropping data
+   * somewhere around next year with nothing in the logs to say so.
+   *
+   * `maxPages` stays as a genuine runaway guard against a malformed cursor that
+   * never advances, and it now WARNS LOUDLY because hitting it means real data
+   * was left behind.
    */
   private async fetchAllPages<T>(
     endpoint: string,
     params: Record<string, string | number> = {},
-    perPage = 100,
-    maxPages = 500,
+    maxPages = 8000,
   ): Promise<T[]> {
     const all: T[] = [];
-    let page = 1;
+    let cursor: string | null = null;
+    let pages = 0;
 
     for (;;) {
       const query = new URLSearchParams({
         ...Object.fromEntries(
           Object.entries(params).map(([k, v]) => [k, String(v)]),
         ),
-        page: String(page),
-        per_page: String(perPage),
+        pagination_type: "cursor",
       });
+      if (cursor) query.set("cursor", cursor);
 
-      const response = await this.request<Paginated<T>>(
+      const response: Paginated<T> = await this.request<Paginated<T>>(
         `${endpoint}?${query.toString()}`,
       );
       all.push(...(response.data ?? []));
+      pages++;
 
-      const lastPage = Number(response.meta?.last_page);
-      if (!Number.isFinite(lastPage) || page >= lastPage) break;
-      if (page >= maxPages) {
+      const next = response.meta?.next_cursor ?? null;
+      // A null next_cursor is the documented end-of-data marker.
+      if (!next) break;
+      // Guard against a cursor that returns itself, which would loop forever.
+      if (next === cursor) {
+        console.warn(`[emailbison] ${endpoint}: cursor stopped advancing at page ${pages}`);
+        break;
+      }
+      if (pages >= maxPages) {
         console.warn(
-          `[emailbison] ${endpoint}: stopped at the ${maxPages}-page guard`,
+          `[emailbison] ${endpoint}: hit the ${maxPages}-page runaway guard — DATA WAS LEFT BEHIND`,
         );
         break;
       }
-      page++;
+      cursor = next;
     }
 
     return all;
@@ -354,10 +375,45 @@ export class EmailBisonClient {
    * NULL. The campaign-scoped feed returns only genuine tracked replies with a
    * real campaign_id and lead_id.
    */
-  async getCampaignRepliesPage(campaignId: number, page = 1, perPage = 100) {
+  /**
+   * One page of a campaign's replies, cursor-paged.
+   *
+   * Per-campaign rather than the global /api/replies, and that is a 17,000x
+   * difference: the global endpoint holds every inbound message across every
+   * sender inbox — 2,017,465 rows — of which only ~8,000 are tracked replies
+   * tied to a campaign send. Walking it would be ~134,000 requests to find 0.4%
+   * of what it returns.
+   *
+   * Cursor rather than page numbers because page mode caps at 1000 pages and
+   * stops silently; `per_page` is ignored everywhere, so pages are 15 rows and
+   * that ceiling is only 15,000 replies per campaign.
+   */
+  async getCampaignRepliesPage(campaignId: number, cursor: string | null = null) {
+    const query = new URLSearchParams({ pagination_type: "cursor" });
+    if (cursor) query.set("cursor", cursor);
     return this.request<Paginated<EBReply>>(
-      `/api/campaigns/${campaignId}/replies?page=${page}&per_page=${perPage}`,
+      `/api/campaigns/${campaignId}/replies?${query.toString()}`,
     );
+  }
+
+  /**
+   * One lead, by id.
+   *
+   * This is how the Replies view gets its attributes, rather than walking the
+   * whole list. Pages are a fixed 15 rows, so a full walk of 69,794 leads is
+   * 4,653 SERIAL requests (~25 min, because a cursor cannot be parallelised).
+   * Fetching the 6,675 people who have actually replied runs at the client's
+   * concurrency of 4, and after the first backfill only new repliers are
+   * fetched — which makes the nightly run seconds rather than minutes.
+   */
+  async getLead(id: number): Promise<EBLead | null> {
+    try {
+      return this.unwrap(await this.request<EBLead | { data: EBLead }>(`/api/leads/${id}`));
+    } catch (error) {
+      // A lead deleted in EmailBison is a 404, which is an answer, not a fault.
+      if (error instanceof EmailBisonApiError && error.statusCode === 404) return null;
+      throw error;
+    }
   }
 
   /**

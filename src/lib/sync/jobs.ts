@@ -1,5 +1,24 @@
 import { createEmailBisonClient, type EmailBisonClient } from "@/lib/emailbison/client.ts";
 import { classifyPlatform } from "../analytics/outcomes.ts";
+import { normaliseAttributeName, parseNumericValue } from "../analytics/lead-attributes.ts";
+
+/*
+ * Attributes a numeric band is actually computed from.
+ *
+ * Everything else on a lead is text by design — "office city" is "Charlotte, NC"
+ * and failing to parse it is correct, not a fault. Counting those as parse
+ * failures made the first run report 1,836 of 5,568 "unparsed", which reads as
+ * a broken importer instead of a working one.
+ */
+const NUMERIC_LEAD_ATTRIBUTES = new Set([
+  "sales volume",
+  "estimated gci",
+  "closed transactions",
+  "average sales price",
+  "closed rentals",
+  "buy-side",
+  "list-side",
+]);
 import { dedupeBy } from "./dedupe.ts";
 import { getSupabase } from "@/lib/supabase/server";
 import { exclusionReason, matchCampaign } from "@/lib/clients/match.ts";
@@ -478,8 +497,9 @@ export function makeRepliesJob(overlapHours: number | null): JobFn {
 
   await pool(campaigns, 4, async (c) => {
     try {
-      for (let page = 1; ; page++) {
-        const payload = await eb.getCampaignRepliesPage(c.id, page, 100);
+      let cursor: string | null = null;
+      for (;;) {
+        const payload = await eb.getCampaignRepliesPage(c.id, cursor);
         apiCalls++;
         pagesRead++;
         const batch = payload.data ?? [];
@@ -506,11 +526,15 @@ export function makeRepliesJob(overlapHours: number | null): JobFn {
             synced_at: new Date().toISOString(),
           });
         }
-        if (page >= (payload.meta?.last_page ?? 1)) break;
-
         // Newest-first, so the last row on the page is the oldest seen so far.
+        // Stopping here is what makes the frequent job cheap: it walks back only
+        // as far as the watermark, not through the campaign's whole history.
         const oldest = batch.length ? batch[batch.length - 1].date_received : null;
         if (cutoff && oldest && new Date(oldest) < cutoff) break;
+
+        const next: string | null = payload.meta?.next_cursor ?? null;
+        if (!next || next === cursor) break;
+        cursor = next;
       }
     } catch {
       /* skip a failing campaign */
@@ -912,11 +936,146 @@ export const syncOutcomeAttribution: JobFn = async ({ teamId }): Promise<JobResu
   };
 };
 
+/**
+ * Leads, for the Replies view's breakdowns (spec §5.5).
+ *
+ * SCOPED TO PEOPLE WHO HAVE ACTUALLY REPLIED, AND FETCHED ONE BY ONE.
+ *
+ * The view answers "what do our repliers have in common?", so only they matter:
+ * 6,675 distinct leads out of 69,794. Two facts from EmailBison's pagination
+ * docs decide the shape of this job:
+ *
+ *   * Page size is a FIXED 15 and `per_page` is ignored everywhere. A full walk
+ *     of the lead list is 4,653 requests, and a cursor walk cannot be
+ *     parallelised, so it is ~25 minutes of serial calls to find 10% of what it
+ *     downloads.
+ *   * Page-based paging is capped at 1000 pages, i.e. 15,000 records, and stops
+ *     SILENTLY. The first version of this job hit exactly that guard and
+ *     reported success having matched 464 of 6,677 repliers.
+ *
+ * Fetching by id instead runs at the client's concurrency of 4 and asks for
+ * precisely the rows we need. Because it skips leads already stored, the first
+ * run is a backfill and every run after it is seconds.
+ */
+export const syncLeads: JobFn = async ({ teamId }): Promise<JobResult> => {
+  const eb = createEmailBisonClient();
+  const sb = getSupabase();
+
+  // Who has replied. Paged explicitly: PostgREST caps a select at 1000 rows and
+  // truncates without saying so (CLAUDE.md rule 7).
+  const repliers = new Set<number>();
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await sb
+      .from("replies")
+      .select("lead_id")
+      .eq("team_id", teamId)
+      .not("lead_id", "is", null)
+      .range(offset, offset + 999);
+    if (error) throw new Error(`replies: ${error.message}`);
+    for (const row of data ?? []) repliers.add(Number(row.lead_id));
+    if (!data || data.length < 1000) break;
+  }
+
+  if (!repliers.size) return { rowsWritten: 0, apiCalls: 0, detail: { repliers: 0 } };
+
+  // Skip what we already hold. This is what turns a 6,675-call backfill into a
+  // handful of calls a night.
+  const known = new Set<number>();
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await sb
+      .from("leads")
+      .select("id")
+      .eq("team_id", teamId)
+      .range(offset, offset + 999);
+    if (error) throw new Error(`leads: ${error.message}`);
+    for (const row of data ?? []) known.add(Number(row.id));
+    if (!data || data.length < 1000) break;
+  }
+
+  const missing = [...repliers].filter((id) => !known.has(id));
+
+  /*
+   * Bounded per run. A first backfill of 6,675 leads is ~9 minutes, which is
+   * longer than a request should live, so the job takes a slice and the next
+   * scheduled run continues — the same draining-queue shape as reply timing.
+   */
+  const batch = missing.slice(0, 2000);
+
+  const leadRows: Record<string, unknown>[] = [];
+  const attrRows: Record<string, unknown>[] = [];
+  let apiCalls = 0;
+  let missingUpstream = 0;
+  let unparsedNumerics = 0;
+
+  await pool(batch, 4, async (id) => {
+    const lead = await eb.getLead(id);
+    apiCalls++;
+    if (!lead) {
+      // Deleted upstream. Counted so a rise is visible rather than looking like
+      // the queue simply never drains.
+      missingUpstream++;
+      return;
+    }
+
+    leadRows.push({
+      id: lead.id,
+      team_id: teamId,
+      email: lead.email ?? null,
+      first_name: lead.first_name ?? null,
+      last_name: lead.last_name ?? null,
+      // The replier's CURRENT employer. Never the client. See 027.
+      company: lead.company ?? null,
+      title: lead.title ?? null,
+      status: lead.status ?? null,
+      eb_created_at: lead.created_at ?? null,
+      eb_updated_at: lead.updated_at ?? null,
+      synced_at: new Date().toISOString(),
+    });
+
+    for (const variable of lead.custom_variables ?? []) {
+      if (!variable?.name) continue;
+      const value = variable.value ?? null;
+      const numeric = parseNumericValue(value);
+      // Most attributes are text ("Charlotte, NC") and are MEANT to be
+      // unparseable, so only the ones a band is computed from are counted here.
+      if (value && numeric === null && NUMERIC_LEAD_ATTRIBUTES.has(normaliseAttributeName(variable.name))) {
+        unparsedNumerics++;
+      }
+      attrRows.push({
+        lead_id: lead.id,
+        team_id: teamId,
+        name: normaliseAttributeName(variable.name),
+        value,
+        value_numeric: numeric,
+      });
+    }
+  });
+
+  // Attributes reference leads, so the parent rows must land first.
+  await chunkUpsert("leads", leadRows, "id");
+  await chunkUpsert("lead_attributes", attrRows, "lead_id,name");
+
+  return {
+    rowsWritten: leadRows.length + attrRows.length,
+    apiCalls,
+    detail: {
+      repliers: repliers.size,
+      alreadyHeld: known.size,
+      fetched: leadRows.length,
+      attributes: attrRows.length,
+      stillMissing: missing.length - batch.length,
+      missingUpstream,
+      unparsedNumerics,
+    },
+  };
+};
+
 export const JOBS = {
   "sync-entities": syncEntities,
   "sync-steps": syncSteps,
   "sync-reply-timing": syncReplyTiming,
   "sync-senders": syncSenders,
+  "sync-leads": syncLeads,
   "sync-outcomes": syncOutcomes,
   "sync-outcome-attribution": syncOutcomeAttribution,
   // Frequent: usually one page per campaign.

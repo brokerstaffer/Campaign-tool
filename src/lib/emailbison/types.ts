@@ -11,13 +11,27 @@
  * confirmed by scripts/probe-eb.mjs before code depends on it.
  */
 
+/*
+ * Both pagination shapes, because EmailBison returns a different `meta`
+ * depending on `pagination_type`:
+ *
+ *   page mode   -> current_page, last_page, per_page, total
+ *   cursor mode -> path, per_page, next_cursor, prev_cursor   (no total!)
+ *
+ * Everything that walks a list uses cursor mode — page mode is capped at 1000
+ * pages and truncates silently. So `total` and `last_page` are optional here:
+ * relying on them would be relying on fields the walk never receives.
+ */
 export interface Paginated<T> {
   data: T[];
-  meta: {
-    current_page: number;
-    last_page: number;
-    per_page: number;
-    total: number;
+  meta?: {
+    current_page?: number;
+    last_page?: number;
+    per_page?: number;
+    total?: number;
+    /** Cursor mode. `null` is the documented end-of-data marker. */
+    next_cursor?: string | null;
+    prev_cursor?: string | null;
   };
   links?: { next: string | null; prev: string | null };
 }
@@ -202,4 +216,28 @@ export interface EBWorkspace {
   name: string;
   personal_team?: boolean;
   main?: boolean;
+}
+
+/**
+ * A lead, as EmailBison returns it.
+ *
+ * `company` is the agent's CURRENT employer (EXP Realty, Compass, ...), which is
+ * not the client we recruit for — those are two different groupings and the
+ * Replies view exposes both. See 027_reply_dimensions.sql.
+ *
+ * `custom_variables` is an array of {name, value}, per-workspace and open-ended:
+ * office city, sales volume, mls affiliation, top producing city, estimated gci,
+ * closed transactions, average sales price, buy-side, list-side, closed rentals.
+ */
+export interface EBLead {
+  id: number;
+  email?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  company?: string | null;
+  title?: string | null;
+  status?: string | null;
+  custom_variables?: Array<{ name?: string; value?: string | null }> | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }

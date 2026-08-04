@@ -21,7 +21,7 @@ import { DEFAULT_SERIES, SERIES_KEYS, type SeriesKey } from "./series.ts";
 export const PRESETS = ["7d", "30d", "90d", "custom"] as const;
 export type Preset = (typeof PRESETS)[number];
 
-export const SUB_VIEWS = ["charts", "clients", "campaigns"] as const;
+export const SUB_VIEWS = ["charts", "clients", "campaigns", "replies"] as const;
 export type SubView = (typeof SUB_VIEWS)[number];
 
 const PRESET_DAYS: Record<Exclude<Preset, "custom">, number> = {

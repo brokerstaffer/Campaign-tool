@@ -25,6 +25,7 @@ const MANUAL_JOBS = [
   "sync-steps",
   "sync-senders",
   "sync-replies",
+  "sync-leads",
   "sync-outcomes",
   // Bounded by design — one batch off the resolver queue, not a full drain.
   "sync-outcome-attribution",

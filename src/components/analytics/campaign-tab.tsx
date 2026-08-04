@@ -7,6 +7,7 @@ import { useKpis } from "./use-kpis";
 import { ChartsView } from "./charts-view";
 import { ClientsView } from "./clients-view";
 import { CampaignsView } from "./campaigns-view";
+import { RepliesView } from "./replies-view";
 import { type SubView } from "@/lib/analytics/query-params.ts";
 
 /*
@@ -16,14 +17,15 @@ import { type SubView } from "@/lib/analytics/query-params.ts";
  * KPI band and every filter — a route change would remount the band and flash
  * it, which is exactly the shimmer the whole design is trying to avoid.
  *
- * Note: the reference has a fourth "Replies" sub-view. It is deliberately out
- * of scope — see the plan.
+ * All four sub-views from the spec are live. Replies was the last, and it is
+ * the only one that needs lead attributes rather than campaign aggregates.
  */
 
 const SUB_VIEW_OPTIONS: Array<{ value: SubView; label: string }> = [
   { value: "charts", label: "Charts" },
   { value: "clients", label: "Clients" },
   { value: "campaigns", label: "Campaigns" },
+  { value: "replies", label: "Replies" },
 ];
 
 export function CampaignTab() {
@@ -49,6 +51,8 @@ export function CampaignTab() {
           <ChartsView />
         ) : filters.view === "clients" ? (
           <ClientsView />
+        ) : filters.view === "replies" ? (
+          <RepliesView />
         ) : (
           <CampaignsView />
         )}

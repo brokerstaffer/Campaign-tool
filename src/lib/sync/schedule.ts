@@ -51,6 +51,9 @@ export const SCHEDULE = [
   { job: "sync-outcomes", everyMinutes: 60 },
   // A draining queue: 400 addresses a run, ~1 EmailBison call each.
   { job: "sync-outcome-attribution", everyMinutes: 60 },
+  // ~350 calls to walk the lead list. Replier attributes change on the scale
+  // of job moves, not sends, so nightly is generous.
+  { job: "sync-leads", dailyAtUtcHour: 5 },
   { job: "sync-steps", dailyAtUtcHour: 6 },
   { job: "sync-daily-series-deep", dailyAtUtcHour: 7 },
   { job: "sync-day-stats-deep", dailyAtUtcHour: 8 },
