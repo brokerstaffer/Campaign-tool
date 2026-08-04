@@ -50,6 +50,19 @@ interface OfferRow {
   positive_rate: number | null;
   bounce_rate: number | null;
   source: { source_campaign_id: number; source_name: string; step_count: number } | null;
+  /*
+   * Which clients run this offer, biggest first (REQ page 1: "aggregate
+   * positive-rate by client/brand"). An offer that works for one brand and not
+   * another is the thing worth knowing, and the single blended rate hides
+   * exactly that.
+   */
+  clients?: Array<{
+    client: string;
+    campaigns: number;
+    sent: number;
+    replies: number;
+    positive: number;
+  }>;
 }
 
 interface Member {
@@ -73,6 +86,13 @@ interface CopyRow {
   replies: number;
   positive: number;
   bounced: number;
+  /*
+   * Campaign-level counts, summed per group. Sentiment and meetings belong to
+   * the conversation, not to which email in the sequence opened it.
+   */
+  negative: number;
+  neutral: number;
+  meetings: number;
   untagged: boolean;
   reply_rate: number | null;
   positive_rate: number | null;
@@ -257,6 +277,38 @@ export function CopyOfferView() {
                   ))}
                 </dl>
 
+                {/*
+                  The per-client split. Shown only when the offer runs for more
+                  than one client — for a single-client offer it would just
+                  restate the numbers directly above it.
+                */}
+                {(offer.clients?.length ?? 0) > 1 ? (
+                  <div className="mt-3 border-t pt-2">
+                    <p className="mb-1 text-[11px] font-medium text-muted-foreground">By client</p>
+                    <ul className="space-y-0.5">
+                      {offer.clients!.slice(0, 4).map((c) => (
+                        <li
+                          key={c.client}
+                          className="flex items-baseline justify-between gap-2 text-[11px]"
+                        >
+                          <span className="min-w-0 truncate text-muted-foreground">{c.client}</span>
+                          <span className="tnum shrink-0">
+                            {compactNumber(c.sent)} ·{" "}
+                            <span className="text-emerald-700">
+                              {percent(c.replies > 0 ? c.positive / c.replies : null, 1)}
+                            </span>
+                          </span>
+                        </li>
+                      ))}
+                      {offer.clients!.length > 4 ? (
+                        <li className="text-[11px] text-muted-foreground">
+                          +{offer.clients!.length - 4} more
+                        </li>
+                      ) : null}
+                    </ul>
+                  </div>
+                ) : null}
+
                 <Button
                   variant="outline"
                   size="sm"
@@ -432,21 +484,28 @@ export function CopyOfferView() {
                   <th className="w-[11%] px-3 py-2.5 text-right font-medium">Sent</th>
                   <th className="w-[11%] px-3 py-2.5 text-right font-medium">Replies</th>
                   <th className="w-[10%] px-3 py-2.5 text-right font-medium">Reply&nbsp;%</th>
-                  <th className="w-[12%] px-3 py-2.5 text-right font-medium">Positive&nbsp;%</th>
-                  <th className="w-[11%] px-4 py-2.5 text-right font-medium">Bounce&nbsp;%</th>
+                  <th className="w-[10%] px-3 py-2.5 text-right font-medium">Positive&nbsp;%</th>
+                  <th className="w-[9%] px-3 py-2.5 text-right font-medium">Bounce&nbsp;%</th>
+                  {/* The counts behind the rates. "0.7% positive" over 23,428
+                      sends reads very differently once you can see it is 152
+                      people — §6.1 lists all four and the table showed none. */}
+                  <th className="w-[7%] px-2 py-2.5 text-right font-medium">Pos</th>
+                  <th className="w-[7%] px-2 py-2.5 text-right font-medium">Neg</th>
+                  <th className="w-[7%] px-2 py-2.5 text-right font-medium">Neu</th>
+                  <th className="w-[8%] px-4 py-2.5 text-right font-medium">Meetings</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {copy.isLoading ? (
                   <tr>
-                    <td colSpan={dimensions.length + 5} className="py-16 text-center">
+                    <td colSpan={dimensions.length + 9} className="py-16 text-center">
                       <Loader2 className="mx-auto size-4 animate-spin text-muted-foreground" />
                     </td>
                   </tr>
                 ) : rows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={dimensions.length + 5}
+                      colSpan={dimensions.length + 9}
                       className="px-4 py-16 text-center text-muted-foreground"
                     >
                       No data matches your criteria.
@@ -510,12 +569,20 @@ export function CopyOfferView() {
                             cannot hide behind a decent reply rate (§6.1). */}
                         <td
                           className={cn(
-                            "tnum px-4 py-2.5 text-right",
+                            "tnum px-3 py-2.5 text-right",
                             (row.bounce_rate ?? 0) >= 0.03 ? "font-medium text-[#b02525]" : "",
                           )}
                         >
                           {percent(row.bounce_rate, 2)}
                         </td>
+                        <td className="tnum px-2 py-2.5 text-right">{fullNumber(row.positive)}</td>
+                        <td className="tnum px-2 py-2.5 text-right text-muted-foreground">
+                          {fullNumber(row.negative)}
+                        </td>
+                        <td className="tnum px-2 py-2.5 text-right text-muted-foreground">
+                          {fullNumber(row.neutral)}
+                        </td>
+                        <td className="tnum px-4 py-2.5 text-right">{fullNumber(row.meetings)}</td>
                       </tr>,
 
                       /*
@@ -525,7 +592,7 @@ export function CopyOfferView() {
                        */
                       open ? (
                         <tr key={`${row.key}-open`} className="bg-muted/30">
-                          <td colSpan={dimensions.length + 5} className="px-3 py-3">
+                          <td colSpan={dimensions.length + 9} className="px-3 py-3">
                             <p className="mb-2 pl-7 text-xs text-muted-foreground">
                               {row.members.length} opening{" "}
                               {row.members.length === 1 ? "email" : "emails"} in this group

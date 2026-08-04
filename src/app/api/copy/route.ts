@@ -33,6 +33,9 @@ interface StepRow {
   replies: number;
   positive: number;
   bounced: number;
+  negative: number;
+  neutral: number;
+  meetings: number;
   tags: Record<string, string>;
 }
 
@@ -95,6 +98,14 @@ export async function GET(request: NextRequest) {
     replies: number;
     positive: number;
     bounced: number;
+    /*
+     * Campaign-level, not step-level: sentiment and meetings belong to the
+     * conversation, not to which email in the sequence started it. Summed per
+     * bucket, which is the level the number is actually true at.
+     */
+    negative: number;
+    neutral: number;
+    meetings: number;
     untagged: boolean;
     /*
      * The actual emails behind the row. "Question: 2.68% positive" is an
@@ -127,6 +138,9 @@ export async function GET(request: NextRequest) {
       replies: 0,
       positive: 0,
       bounced: 0,
+      negative: 0,
+      neutral: 0,
+      meetings: 0,
       untagged: values.includes(UNTAGGED),
       members: [],
     };
@@ -148,6 +162,16 @@ export async function GET(request: NextRequest) {
     bucket.replies += Number(step.replies) || 0;
     bucket.positive += Number(step.positive) || 0;
     bucket.bounced += Number(step.bounced) || 0;
+    /*
+     * Campaign-level, and safe to sum here only because the RPC returns exactly
+     * one row per campaign (step_order = 1, non-variant). If it ever returned
+     * several first steps for one campaign, these would double-count while
+     * sent/replies stayed right — which is why the constraint lives in the
+     * query rather than being assumed here.
+     */
+    bucket.negative += Number(step.negative) || 0;
+    bucket.neutral += Number(step.neutral) || 0;
+    bucket.meetings += Number(step.meetings) || 0;
     buckets.set(key, bucket);
   }
 

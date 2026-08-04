@@ -38,6 +38,17 @@ export interface CampaignRow {
   botReplies: number;
   bounces: number;
   medianReplySeconds: number | null;
+  /*
+   * Outcome counts, attributed to this campaign (WT §7). Only outcomes we can
+   * PROVE this campaign earned are here, so these sum to less than the
+   * Attribution tab's totals — Instantly and unmatched outcomes belong to no
+   * campaign. Spreading them would be the error 025 exists to prevent.
+   */
+  introductions: number;
+  phoneScreens: number;
+  interviews: number;
+  hires: number;
+  outcomesTotal: number;
 }
 
 export type ColumnGroup =
@@ -45,7 +56,8 @@ export type ColumnGroup =
   | "Rates"
   | "Reply Sentiment"
   | "Reply Source"
-  | "Timing";
+  | "Timing"
+  | "Events";
 
 export interface ColumnDef {
   key: string;
@@ -91,6 +103,23 @@ export const COLUMNS: ColumnDef[] = [
 
   // Timing
   { key: "medianReply", label: "Median Reply", group: "Timing", defaultVisible: true, render: (r) => duration(r.medianReplySeconds) },
+
+  /*
+   * Events (WT §5.3): "so you can read outcomes alongside reply rates in one
+   * row". Off by default — most campaigns have none, and twenty extra zeroes
+   * would push the columns anyone actually scans off the screen.
+   *
+   * `emailsPer` renders a ratio rather than a count: "how much sending buys one
+   * of these", the same question Lead-to-Email answers for positives. DASH when
+   * the campaign earned none, never a misleading 0 or Infinity.
+   */
+  { key: "introductions", label: "Intros", group: "Events", defaultVisible: false, render: (r) => fullNumber(r.introductions) },
+  { key: "phoneScreens", label: "Phone Screens", group: "Events", defaultVisible: false, render: (r) => fullNumber(r.phoneScreens) },
+  { key: "interviews", label: "Interviews", group: "Events", defaultVisible: false, render: (r) => fullNumber(r.interviews) },
+  { key: "hires", label: "Hires", group: "Events", defaultVisible: false, render: (r) => fullNumber(r.hires) },
+  { key: "outcomesTotal", label: "Outcomes", group: "Events", defaultVisible: false, render: (r) => fullNumber(r.outcomesTotal) },
+  { key: "emailsPerIntro", label: "E:Intro", group: "Events", defaultVisible: false, render: (r) => ratio(leadToEmail(r.sent, r.introductions)) },
+  { key: "emailsPerHire", label: "E:Hire", group: "Events", defaultVisible: false, render: (r) => ratio(leadToEmail(r.sent, r.hires)) },
 ];
 
 export const COLUMN_GROUPS: ColumnGroup[] = [
@@ -99,6 +128,7 @@ export const COLUMN_GROUPS: ColumnGroup[] = [
   "Reply Sentiment",
   "Reply Source",
   "Timing",
+  "Events",
 ];
 
 export const DEFAULT_VISIBLE = COLUMNS.filter((c) => c.defaultVisible).map((c) => c.key);

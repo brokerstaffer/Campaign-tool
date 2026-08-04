@@ -43,6 +43,11 @@ export async function GET(request: NextRequest) {
       bounces: Number(r.bounces),
       medianReplySeconds:
         r.median_reply_seconds === null ? null : Number(r.median_reply_seconds),
+      introductions: Number(r.introductions ?? 0),
+      phoneScreens: Number(r.phone_screens ?? 0),
+      interviews: Number(r.interviews ?? 0),
+      hires: Number(r.hires ?? 0),
+      outcomesTotal: Number(r.outcomes_total ?? 0),
     }));
 
     return NextResponse.json({ rows, count: rows.length });
