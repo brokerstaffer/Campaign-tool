@@ -47,6 +47,10 @@ export const SCHEDULE = [
   // ~98 calls; the Infrastructure tab's only source. Inbox health changes on
   // the scale of hours, not minutes.
   { job: "sync-senders", everyMinutes: 180 },
+  // The outcomes feed changes on human timescales, not sending timescales.
+  { job: "sync-outcomes", everyMinutes: 60 },
+  // A draining queue: 400 addresses a run, ~1 EmailBison call each.
+  { job: "sync-outcome-attribution", everyMinutes: 60 },
   { job: "sync-steps", dailyAtUtcHour: 6 },
   { job: "sync-daily-series-deep", dailyAtUtcHour: 7 },
   { job: "sync-day-stats-deep", dailyAtUtcHour: 8 },

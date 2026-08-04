@@ -1,4 +1,5 @@
 import { createEmailBisonClient, type EmailBisonClient } from "@/lib/emailbison/client.ts";
+import { classifyPlatform } from "../analytics/outcomes.ts";
 import { getSupabase } from "@/lib/supabase/server";
 import { exclusionReason, matchCampaign } from "@/lib/clients/match.ts";
 import type { JobFn, JobResult } from "./runner";
@@ -648,11 +649,238 @@ export const syncReplyTiming: JobFn = async ({ teamId }): Promise<JobResult> => 
  * keys to `string` and silently disable the compile-time schedule check in
  * schedule.ts.
  */
+// --- outcomes / attribution (spec §7) ---------------------------------------
+
+interface OutcomeRow {
+  id: string;
+  email: string;
+  event_type: string;
+  occurred_at: string;
+  updated_at?: string | null;
+  voided?: boolean;
+  campaign_id?: number | string | null;
+  emailbison_lead_id?: number | null;
+}
+
+/**
+ * Pulls the outcomes feed, incrementally.
+ *
+ * `updated_since` is driven off the watermark, so a re-run costs one page
+ * instead of ten — and because the watermark only advances on success, a failed
+ * run re-covers the same window rather than skipping it.
+ */
+export const syncOutcomes: JobFn = async ({ teamId, watermark }): Promise<JobResult> => {
+  const base = (process.env.OUTCOMES_BASE_URL ?? "").replace(/\/$/, "");
+  const token = process.env.OUTCOMES_TOKEN;
+  if (!base || !token) {
+    throw new Error("OUTCOMES_BASE_URL / OUTCOMES_TOKEN are not set");
+  }
+
+  const startedAt = new Date().toISOString();
+  const rows: Record<string, unknown>[] = [];
+  let apiCalls = 0;
+
+  for (let page = 1; ; page++) {
+    const query = new URLSearchParams({ page: String(page), per_page: "200" });
+    // A 6h overlap absorbs clock skew and any row written while the last run
+    // was mid-flight; re-fetching is free because ids are stable.
+    if (watermark) {
+      query.set(
+        "updated_since",
+        new Date(new Date(watermark).getTime() - 6 * 3600_000).toISOString(),
+      );
+    }
+
+    const response = await fetch(`${base}/api/outcomes?${query}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      cache: "no-store",
+    });
+    apiCalls++;
+    if (!response.ok) {
+      throw new Error(`Outcomes API ${response.status} on page ${page}`);
+    }
+
+    const body = await response.json();
+    for (const o of (body.data ?? []) as OutcomeRow[]) {
+      /*
+       * campaign_id names THREE different things — confirmed by the person who
+       * built the feed, after an earlier read of this file got it wrong:
+       *
+       *   integer -> an EmailBison campaign      (ours; credit it directly)
+       *   UUID    -> an INSTANTLY campaign       (another sending platform)
+       *   null    -> logged directly by the client, no campaign named
+       *
+       * Only the integer branch may ever reach resolved_campaign_id. An Instantly
+       * outcome resolved through EmailBison WOULD find a lead — most of these
+       * people are in both systems — and would credit one of our campaigns with a
+       * result another platform earned. See 025.
+       */
+      const ref = o.campaign_id == null ? null : String(o.campaign_id);
+      const platform = classifyPlatform(ref);
+      const providedCampaign = platform === "emailbison" ? Number(ref) : null;
+
+      /*
+       * 5 of 1,923 rows arrive with no email, no lead id and no campaign — real
+       * outcomes with nothing on them to attribute by. Stamped `unresolved` here
+       * rather than left NULL, so the resolver's queue holds only rows it can
+       * actually make progress on. They still count in the totals; see 024.
+       */
+      const unattributable = platform === "direct" && !o.email && !o.emailbison_lead_id;
+
+      rows.push({
+        id: o.id,
+        team_id: teamId,
+        email: o.email ?? null,
+        event_type: o.event_type,
+        occurred_at: o.occurred_at,
+        source_updated_at: o.updated_at ?? null,
+        voided: Boolean(o.voided),
+        source_campaign_ref: ref,
+        source_platform: platform,
+        source_lead_id: typeof o.emailbison_lead_id === "number" ? o.emailbison_lead_id : null,
+        ...(providedCampaign
+          ? {
+              resolved_campaign_id: providedCampaign,
+              resolution: "provided",
+              resolved_at: new Date().toISOString(),
+            }
+          : platform === "instantly"
+            ? // Counted in every total, never credited to one of our campaigns.
+              { resolution: "other_platform", resolved_at: new Date().toISOString() }
+            : unattributable
+              ? { resolution: "unresolved", resolved_at: new Date().toISOString() }
+              : {}),
+        synced_at: new Date().toISOString(),
+      });
+    }
+
+    const lastPage = Number(body.meta?.last_page) || 1;
+    if (page >= lastPage) break;
+    if (page >= 200) {
+      console.warn("[cron] sync-outcomes: stopped at the 200-page guard");
+      break;
+    }
+  }
+
+  await chunkUpsert("outcome_events", rows, "id");
+
+  return {
+    rowsWritten: rows.length,
+    apiCalls,
+    watermark: startedAt,
+    detail: {
+      outcomes: rows.length,
+      emailbison: rows.filter((r) => r.source_platform === "emailbison").length,
+      instantly: rows.filter((r) => r.source_platform === "instantly").length,
+      direct: rows.filter((r) => r.source_platform === "direct").length,
+    },
+  };
+};
+
+/**
+ * First-touch attribution (§7: "credited back to the campaign that FIRST
+ * contacted that person").
+ *
+ * A draining work queue, like sync-reply-timing: email -> EmailBison lead ->
+ * sent-emails -> earliest send -> that campaign. Sampled against the live API
+ * before building this, 19 of 20 unattributed addresses resolved to a lead.
+ *
+ * `resolution` is stamped even when nothing is found, so an address EmailBison
+ * has never seen is not retried on every tick forever — and "we looked and
+ * found nothing" stays distinguishable from "not looked at yet".
+ */
+export const syncOutcomeAttribution: JobFn = async ({ teamId }): Promise<JobResult> => {
+  const eb = createEmailBisonClient();
+  const sb = getSupabase();
+  let apiCalls = 0;
+
+  const { data: pending } = await sb
+    .from("outcome_events")
+    .select("id, email, source_lead_id")
+    .eq("team_id", teamId)
+    .is("resolution", null)
+    .not("email", "is", null)
+    // Only `direct` rows. An Instantly outcome is already fully explained, and
+    // an EmailBison one already carries its campaign.
+    .eq("source_platform", "direct")
+    .order("occurred_at", { ascending: false })
+    .limit(400);
+
+  if (!pending?.length) return { rowsWritten: 0, apiCalls: 0 };
+
+  // One lookup per distinct address, not per event — the same person often has
+  // several outcomes.
+  const byEmail = new Map<string, typeof pending>();
+  for (const row of pending) {
+    const key = row.email!.trim().toLowerCase();
+    byEmail.set(key, [...(byEmail.get(key) ?? []), row]);
+  }
+
+  const updates: Array<{ id: string; campaignId: number | null; how: string }> = [];
+
+  await pool([...byEmail.keys()], 4, async (email) => {
+    const events = byEmail.get(email)!;
+    try {
+      let leadId = events.find((e) => e.source_lead_id)?.source_lead_id ?? null;
+      let how = leadId ? "lead_id" : "email";
+
+      if (!leadId) {
+        const found = await eb.searchLeads(email);
+        apiCalls++;
+        leadId = found[0]?.id ?? null;
+      }
+
+      if (!leadId) {
+        for (const e of events) updates.push({ id: e.id, campaignId: null, how: "unresolved" });
+        return;
+      }
+
+      const sends = await eb.getLeadSentEmails(leadId);
+      apiCalls++;
+      const first = (Array.isArray(sends?.data) ? sends.data : [])
+        .filter((s) => s.sent_at && s.campaign_id)
+        .sort(
+          (a, b) =>
+            new Date(String(a.sent_at)).getTime() - new Date(String(b.sent_at)).getTime(),
+        )[0];
+
+      const campaignId = first ? Number(first.campaign_id) : null;
+      if (!campaignId) how = "unresolved";
+      for (const e of events) updates.push({ id: e.id, campaignId, how });
+    } catch {
+      // Leave it unstamped so the next run retries — a transient API failure
+      // must not be recorded as "this person does not exist".
+    }
+  });
+
+  for (const u of updates) {
+    await sb
+      .from("outcome_events")
+      .update({
+        resolved_campaign_id: u.campaignId,
+        resolution: u.how,
+        resolved_at: new Date().toISOString(),
+      })
+      .eq("id", u.id);
+  }
+
+  return {
+    rowsWritten: updates.length,
+    apiCalls,
+    detail: {
+      attributed: updates.filter((u) => u.campaignId).length,
+      unresolved: updates.filter((u) => !u.campaignId).length,
+    },
+  };
+};
+
 export const JOBS = {
   "sync-entities": syncEntities,
   "sync-steps": syncSteps,
   "sync-reply-timing": syncReplyTiming,
   "sync-senders": syncSenders,
+  "sync-outcomes": syncOutcomes,
+  "sync-outcome-attribution": syncOutcomeAttribution,
   // Frequent: usually one page per campaign.
   "sync-replies": makeRepliesJob(48),
   // Nightly: the full 600-call walk, which also repairs `interested` flips that

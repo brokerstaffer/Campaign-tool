@@ -25,7 +25,7 @@ export function TabBar() {
   const qs = searchParams.toString();
 
   return (
-    <div className="flex h-11 shrink-0 items-center gap-1 border-b px-4">
+    <div className="flex h-11 shrink-0 items-center gap-1 overflow-x-auto border-b px-4">
       {TABS.map((tab) => {
         const active = pathname === tab.href;
         return (

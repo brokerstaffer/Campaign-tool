@@ -36,7 +36,7 @@ export function FilterBar() {
     : null;
 
   return (
-    <div className="flex h-11 shrink-0 items-center gap-3 border-b px-4">
+    <div className="flex h-11 shrink-0 items-center gap-3 overflow-x-auto border-b px-4">
       <QuickRangePills />
 
       <Separator orientation="vertical" className="h-4" />

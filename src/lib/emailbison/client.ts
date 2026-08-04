@@ -360,6 +360,17 @@ export class EmailBisonClient {
     );
   }
 
+  /**
+   * Finds leads by an arbitrary term — used with an email address to resolve an
+   * outcome back to the campaign that first contacted that person.
+   */
+  async searchLeads(term: string): Promise<Array<{ id: number; email?: string }>> {
+    const response = await this.request<{ data?: Array<{ id: number; email?: string }> }>(
+      `/api/leads?search=${encodeURIComponent(term)}&per_page=5`,
+    );
+    return response?.data ?? [];
+  }
+
   /** Sends made to one lead — the source for first_send_at (Median Reply Time). */
   async getLeadSentEmails(leadId: number) {
     return this.request<{ data?: Array<Record<string, unknown>> }>(

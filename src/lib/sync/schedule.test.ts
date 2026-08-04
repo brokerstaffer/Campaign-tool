@@ -29,14 +29,24 @@ describe("sync schedule", () => {
   });
 
   it("stacks the coarser cadences on the hour", () => {
-    const due = dueJobs(at(14, 0));
-    // 14:00 is a multiple of 10, 30 and 60 minutes, but not of 180.
-    assert.deepEqual(due.sort(), [
-      "sync-daily-series",
-      "sync-entities",
-      "sync-replies",
-      "sync-reply-timing",
-    ]);
+    /*
+     * Derived from the schedule rather than hardcoded. A literal list turned
+     * this into a chore — adding an hourly job failed it without anything being
+     * wrong — while asserting the RULE still catches a genuine cadence bug.
+     * 14:00 is minute-of-day 840: divisible by 10, 30 and 60, not by 180.
+     */
+    const minuteOfDay = 14 * 60;
+    const expected = entries
+      .filter((e) => e.everyMinutes && minuteOfDay % e.everyMinutes === 0)
+      .map((e) => e.job)
+      .sort();
+
+    assert.deepEqual(dueJobs(at(14, 0)).sort(), expected);
+    assert.ok(expected.includes("sync-replies"), "the 10-minute job must be due on the hour");
+    assert.ok(
+      !expected.includes("sync-day-stats"),
+      "the 3-hourly job must NOT be due at 14:00",
+    );
   });
 
   it("fires the 3-hourly job only on multiples of three hours", () => {
