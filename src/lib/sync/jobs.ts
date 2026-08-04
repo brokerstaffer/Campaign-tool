@@ -1,5 +1,6 @@
 import { createEmailBisonClient, type EmailBisonClient } from "@/lib/emailbison/client.ts";
 import { classifyPlatform } from "../analytics/outcomes.ts";
+import { dedupeBy } from "./dedupe.ts";
 import { getSupabase } from "@/lib/supabase/server";
 import { exclusionReason, matchCampaign } from "@/lib/clients/match.ts";
 import type { JobFn, JobResult } from "./runner";
@@ -37,8 +38,16 @@ async function chunkUpsert(
   size = 500,
 ) {
   const sb = getSupabase();
-  for (let i = 0; i < rows.length; i += size) {
-    const { error } = await sb.from(table).upsert(rows.slice(i, i + size), { onConflict });
+  // Dedupe first: Postgres fails the whole statement if ON CONFLICT touches a
+  // row twice, and EmailBison's offset pagination repeats rows. See dedupe.ts.
+  const unique = dedupeBy(rows, onConflict);
+  if (unique.length !== rows.length) {
+    console.warn(
+      `[sync] ${table}: dropped ${rows.length - unique.length} duplicate rows before upsert`,
+    );
+  }
+  for (let i = 0; i < unique.length; i += size) {
+    const { error } = await sb.from(table).upsert(unique.slice(i, i + size), { onConflict });
     if (error) throw new Error(`${table}: ${error.message}`);
   }
 }

@@ -109,6 +109,21 @@ function derive(
  * exposes no cross-campaign distinct count, so that is a genuine upstream
  * limit, not something to paper over.
  */
+/*
+ * How long a live upstream answer may be reused.
+ *
+ * Prospects and Median Follow-up are the only two KPI values fetched live, and
+ * they sit in the same Promise.all as the Supabase RPCs — so the band waits for
+ * whichever is slowest, measured at 250-400ms warm, on EVERY filter change.
+ * The same (from, to, campaignIds) always yields the same answer, so paying
+ * that on a re-render is pure latency.
+ *
+ * Five minutes is deliberately shorter than the 10-minute reply sync that feeds
+ * the tiles beside them: the band can never show a Prospects figure staler than
+ * the counts it sits next to.
+ */
+const UPSTREAM_TTL_SECONDS = 300;
+
 async function fetchProspects(
   from: string,
   to: string,
@@ -128,7 +143,7 @@ async function fetchProspects(
     if (campaignIds.length === 0) {
       const response = await fetch(
         `${base}/api/workspaces/v1.1/stats?start_date=${from}&end_date=${to}`,
-        { headers, cache: "no-store" },
+        { headers, next: { revalidate: UPSTREAM_TTL_SECONDS } },
       );
       if (!response.ok) return null;
       const body = await response.json();
@@ -144,6 +159,10 @@ async function fetchProspects(
           method: "POST",
           headers,
           body: JSON.stringify({ start_date: from, end_date: to }),
+          // A POST is not cached by Next, so the fan-out branch still pays full
+          // latency. It is capped at 25 campaigns and only runs when the user
+          // has actually picked campaigns; the common unfiltered path above is
+          // the one that had to be fast.
           cache: "no-store",
         });
         if (!response.ok) return 0;
@@ -176,7 +195,7 @@ async function fetchFollowUpTime(
   try {
     const response = await fetch(
       `${base}/api/metrics/follow-up-time?from=${from}&to=${to}&token=${token}`,
-      { cache: "no-store" },
+      { next: { revalidate: UPSTREAM_TTL_SECONDS } },
     );
     // The portal host rewrites blocked /api/* to an HTML page with status 200,
     // so ok alone is not proof — check the content type before parsing.

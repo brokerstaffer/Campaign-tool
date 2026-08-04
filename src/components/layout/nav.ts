@@ -1,4 +1,4 @@
-import { BarChart3, CalendarClock, Mail, type LucideIcon } from "lucide-react";
+import { BarChart3, CalendarClock, Mail, Users, type LucideIcon } from "lucide-react";
 
 /*
  * Two destinations, both real.
@@ -9,9 +9,10 @@ import { BarChart3, CalendarClock, Mail, type LucideIcon } from "lucide-react";
  * dead, which makes the two live ones harder to find rather than easier to
  * trust.
  *
- * NOTE: /clients is still a working page and is no longer linked from here.
- * It is where the campaign→client mapping is maintained, so it needs a way in
- * from somewhere before anyone has to fix an unassigned campaign.
+ * Clients is back for a concrete reason, not for symmetry: two live campaigns
+ * ("Kelly + Co + Nicole + BRIGHT", "Rise + Nicole + SRAR") currently match no
+ * client, so their volume lands in the KPI band but in no client row. That page
+ * is the only place to resolve them, and it had no way in.
  */
 
 export interface NavItem {
@@ -26,6 +27,10 @@ export const NAV: NavItem[] = [
   // "what goes out next", which is a different question from "how did it do".
   { label: "Schedule", href: "/schedule", icon: CalendarClock },
   { label: "Analytics", href: "/analytics/campaign", icon: BarChart3 },
+  // Where the campaign→client mapping is maintained. Every client-grouped
+  // number on the dashboard depends on it, and an unassigned campaign is only
+  // fixable here.
+  { label: "Clients", href: "/clients", icon: Users },
 ];
 
 /** Active when the path is the item or a descendant of it. */
