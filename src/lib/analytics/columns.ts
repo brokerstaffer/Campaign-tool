@@ -33,8 +33,6 @@ export interface CampaignRow {
   replies: number;
   humanReplies: number;
   positive: number;
-  negative: number;
-  neutral: number;
   botReplies: number;
   bounces: number;
   medianReplySeconds: number | null;
@@ -118,8 +116,6 @@ export const COLUMNS: ColumnDef[] = [
   // EmailBison's `interested` is a positive signal only, with no negative
   // counterpart. Shipping the column at 0 is truthful; inventing one is not.
   { key: "sentimentPositive", label: "+", group: "Reply Sentiment", defaultVisible: false, render: (r) => fullNumber(r.positive) },
-  { key: "sentimentNegative", label: "−", group: "Reply Sentiment", defaultVisible: false, render: (r) => fullNumber(r.negative) },
-  { key: "sentimentNeutral", label: "~", group: "Reply Sentiment", defaultVisible: false, render: (r) => fullNumber(r.neutral) },
 
   // Reply source — EmailBison's own automated-reply heuristic.
   { key: "sourceHuman", label: "Human", group: "Reply Source", defaultVisible: false, render: (r) => fullNumber(r.humanReplies) },

@@ -37,8 +37,6 @@ export async function GET(request: NextRequest) {
       replies: Number(r.replies),
       humanReplies: Number(r.human_replies),
       positive: Number(r.positive),
-      negative: Number(r.negative),
-      neutral: Number(r.neutral),
       botReplies: Number(r.bot_replies),
       bounces: Number(r.bounces),
       medianReplySeconds:

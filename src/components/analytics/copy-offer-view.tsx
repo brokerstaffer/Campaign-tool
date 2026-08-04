@@ -87,11 +87,9 @@ interface CopyRow {
   positive: number;
   bounced: number;
   /*
-   * Campaign-level counts, summed per group. Sentiment and meetings belong to
-   * the conversation, not to which email in the sequence opened it.
+   * Campaign-level, summed per group: a meeting belongs to the conversation,
+   * not to which email in the sequence opened it.
    */
-  negative: number;
-  neutral: number;
   meetings: number;
   untagged: boolean;
   reply_rate: number | null;
@@ -490,22 +488,20 @@ export function CopyOfferView() {
                       sends reads very differently once you can see it is 152
                       people — §6.1 lists all four and the table showed none. */}
                   <th className="w-[7%] px-2 py-2.5 text-right font-medium">Pos</th>
-                  <th className="w-[7%] px-2 py-2.5 text-right font-medium">Neg</th>
-                  <th className="w-[7%] px-2 py-2.5 text-right font-medium">Neu</th>
                   <th className="w-[8%] px-4 py-2.5 text-right font-medium">Meetings</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {copy.isLoading ? (
                   <tr>
-                    <td colSpan={dimensions.length + 9} className="py-16 text-center">
+                    <td colSpan={dimensions.length + 7} className="py-16 text-center">
                       <Loader2 className="mx-auto size-4 animate-spin text-muted-foreground" />
                     </td>
                   </tr>
                 ) : rows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={dimensions.length + 9}
+                      colSpan={dimensions.length + 7}
                       className="px-4 py-16 text-center text-muted-foreground"
                     >
                       No data matches your criteria.
@@ -576,12 +572,6 @@ export function CopyOfferView() {
                           {percent(row.bounce_rate, 2)}
                         </td>
                         <td className="tnum px-2 py-2.5 text-right">{fullNumber(row.positive)}</td>
-                        <td className="tnum px-2 py-2.5 text-right text-muted-foreground">
-                          {fullNumber(row.negative)}
-                        </td>
-                        <td className="tnum px-2 py-2.5 text-right text-muted-foreground">
-                          {fullNumber(row.neutral)}
-                        </td>
                         <td className="tnum px-4 py-2.5 text-right">{fullNumber(row.meetings)}</td>
                       </tr>,
 
@@ -592,7 +582,7 @@ export function CopyOfferView() {
                        */
                       open ? (
                         <tr key={`${row.key}-open`} className="bg-muted/30">
-                          <td colSpan={dimensions.length + 9} className="px-3 py-3">
+                          <td colSpan={dimensions.length + 7} className="px-3 py-3">
                             <p className="mb-2 pl-7 text-xs text-muted-foreground">
                               {row.members.length} opening{" "}
                               {row.members.length === 1 ? "email" : "emails"} in this group
