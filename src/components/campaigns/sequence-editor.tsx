@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  GripVertical,
   ChevronDown,
   ChevronUp,
   Loader2,
@@ -21,6 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { EmailPanel } from "@/components/analytics/email-panel";
 import { countVariations } from "@/lib/spintax.ts";
+import { cn } from "@/lib/utils";
 import { CopyTagsPanel } from "@/components/campaigns/copy-tags-panel";
 
 /*
@@ -32,21 +34,35 @@ import { CopyTagsPanel } from "@/components/campaigns/copy-tags-panel";
  * Everything below is local state until Save. The component never mutates the
  * server copy, and the Save button is the only thing that can.
  *
- * Reordering is buttons, not drag-and-drop. The spec asks for drag, but a drag
- * handle on a list that edits live email sequences is a one-slip mistake with
- * no undo, and it is unusable by keyboard. Up/down is explicit, reversible in
- * one click, and works everywhere. Flagging the deviation rather than hiding it.
+ * Reordering is BOTH drag and buttons (§9.3 asks for drag). An earlier pass
+ * shipped buttons only, arguing a mis-drag was "a one-slip mistake with no
+ * undo" — but nothing here is saved until Save, so a mis-drag is undone by
+ * dragging back or by leaving. The real objection was keyboard access, which
+ * the buttons still provide. Both, rather than either.
+ *
+ * Formatting wraps the selection in HTML tags rather than using a WYSIWYG
+ * editor, and that is deliberate. Bodies are HTML (297 of 299 steps) but they
+ * also carry spintax `{a|b}` and merge tags `{FIRST_NAME}` in the SAME single
+ * braces. Every contenteditable surface normalises markup on input, which would
+ * rewrite or split those. Wrapping a selection leaves every other byte untouched.
  */
 
-const MERGE_TAGS = [
-  "{FIRST_NAME}",
-  "{LAST_NAME}",
-  "{EMAIL}",
-  "{COMPANY_NAME}",
-  "{JOB_TITLE}",
-  "{CITY}",
-  "{STATE}",
-];
+/*
+ * Fallback only. The real list comes from /api/merge-tags, built from the lead
+ * custom variables this workspace actually has — the constant that used to live
+ * here offered {COMPANY_NAME}, {JOB_TITLE}, {CITY} and {STATE}, none of which
+ * appear in any of the 299 steps or map to anything on a lead.
+ */
+const FALLBACK_MERGE_TAGS = ["{FIRST_NAME}", "{LAST_NAME}", "{EMAIL}", "{COMPANY}"];
+
+/** Wraps the selection. Kept to tags EmailBison renders in an email body. */
+const FORMATS = [
+  { label: "B", title: "Bold", open: "<strong>", close: "</strong>", className: "font-bold" },
+  { label: "I", title: "Italic", open: "<em>", close: "</em>", className: "italic" },
+  { label: "U", title: "Underline", open: "<u>", close: "</u>", className: "underline" },
+  { label: "¶", title: "Paragraph", open: "<p>", close: "</p>", className: "" },
+  { label: "↵", title: "Line break", open: "<br>", close: "", className: "" },
+] as const;
 
 export interface EditableStep {
   /** Absent = added in this session, not yet on EmailBison. */
@@ -79,9 +95,44 @@ export function SequenceEditor({
   const [steps, setSteps] = useState<EditableStep[]>(initial);
   const [open, setOpen] = useState<string | null>(initial[0]?.key ?? null);
   const bodyRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
 
   const sent = new Set(sentStepIds);
   const dirty = JSON.stringify(steps) !== JSON.stringify(initial);
+
+  /*
+   * §9.3: "If you try to leave with unsaved edits, you'll be warned. Nothing
+   * goes live by accident." The promise was in the file's own header comment
+   * and nothing implemented it — closing the tab discarded the work silently.
+   *
+   * `beforeunload` covers reload, tab close and navigation away from the app.
+   * It cannot cover an in-app route change, which React Router-style
+   * navigation performs without unloading; the Save/Discard bar stays visible
+   * for that case, which is why it is pinned rather than inline.
+   */
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      // Browsers ignore custom text now and show their own wording; assigning
+      // returnValue is still what triggers the prompt at all.
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  const { data: mergeTags } = useQuery<{ tags: string[] }>({
+    queryKey: ["merge-tags"],
+    queryFn: async () => {
+      const response = await fetch("/api/merge-tags");
+      if (!response.ok) throw new Error("Failed to load merge tags");
+      return response.json();
+    },
+    staleTime: 5 * 60_000,
+  });
+  const tags = mergeTags?.tags?.length ? mergeTags.tags : FALLBACK_MERGE_TAGS;
 
   const save = useMutation({
     mutationFn: async () => {
@@ -136,6 +187,21 @@ export function SequenceEditor({
     setSteps(next);
   }
 
+  /**
+   * Drag reorder (§9.3), moving the dragged step to the drop position.
+   *
+   * Not a swap. `move` swaps because it steps one place at a time, but dragging
+   * step 1 onto step 4 must leave 2 and 3 shifted up — a swap there would
+   * silently reorder two steps the user never touched.
+   */
+  function reorder(from: number, to: number) {
+    if (from === to || to < 0 || to >= steps.length) return;
+    const next = [...steps];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setSteps(next);
+  }
+
   function remove(index: number) {
     setSteps(steps.filter((_, i) => i !== index));
   }
@@ -156,6 +222,29 @@ export function SequenceEditor({
       },
     ]);
     setOpen(key);
+  }
+
+  /**
+   * Wraps the current selection, or inserts at the cursor when nothing is
+   * selected. Operates on the raw text so spintax and merge tags survive byte
+   * for byte — the reason this is not a WYSIWYG editor.
+   */
+  function wrap(index: number, open: string, close: string) {
+    const field = bodyRefs.current[steps[index].key];
+    const body = steps[index].email_body;
+    if (!field) return update(index, { email_body: body + open + close });
+
+    const start = field.selectionStart ?? body.length;
+    const end = field.selectionEnd ?? start;
+    const next = body.slice(0, start) + open + body.slice(start, end) + close + body.slice(end);
+    update(index, { email_body: next });
+
+    queueMicrotask(() => {
+      field.focus();
+      // Leave the wrapped text selected so a second format can be applied, and
+      // put the caret inside the tags when nothing was selected.
+      field.setSelectionRange(start + open.length, end + open.length);
+    });
   }
 
   /** Inserts at the cursor rather than appending — §9.3 asks for a menu, not typing. */
@@ -236,7 +325,47 @@ export function SequenceEditor({
 
         return (
           <div key={step.key} className="rounded-lg border">
-            <div className="flex items-center gap-2 border-b px-3 py-2">
+            <div
+              /*
+               * Drop target. `dragOver` must preventDefault or the browser
+               * refuses the drop entirely — the single most common reason
+               * native HTML5 drag "does nothing".
+               */
+              onDragOver={(e) => {
+                if (dragIndex === null) return;
+                e.preventDefault();
+                setDropIndex(index);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dragIndex !== null) reorder(dragIndex, index);
+                setDragIndex(null);
+                setDropIndex(null);
+              }}
+              className={cn(
+                "flex items-center gap-2 border-b px-3 py-2",
+                dropIndex === index && dragIndex !== index && "bg-accent",
+                dragIndex === index && "opacity-40",
+              )}
+            >
+              {/*
+                Only the handle is draggable, not the row: a draggable row makes
+                selecting the subject text start a drag instead.
+              */}
+              <span
+                draggable
+                onDragStart={() => setDragIndex(index)}
+                onDragEnd={() => {
+                  setDragIndex(null);
+                  setDropIndex(null);
+                }}
+                title="Drag to reorder"
+                aria-hidden
+                className="shrink-0 cursor-grab text-muted-foreground active:cursor-grabbing"
+              >
+                <GripVertical className="size-3.5" />
+              </span>
+
               <span className="tnum shrink-0 rounded bg-muted px-1.5 text-xs">{index + 1}</span>
 
               <button
@@ -342,26 +471,53 @@ export function SequenceEditor({
                 ) : null}
 
                 <div className="space-y-1">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <label className="text-[11px] font-medium">Body</label>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="sm" className="h-6 text-[11px]">
-                          Insert field
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {MERGE_TAGS.map((tag) => (
-                          <DropdownMenuItem
-                            key={tag}
-                            onSelect={() => insertTag(index, tag)}
-                            className="font-mono text-xs"
+
+                    <div className="flex items-center gap-1">
+                      {/*
+                        §9.3: "Write the email with formatting." Wraps the
+                        selection in HTML rather than editing rendered output —
+                        the body carries spintax and merge tags in single braces
+                        that a contenteditable surface would rewrite.
+                      */}
+                      <div className="flex items-center rounded-md border">
+                        {FORMATS.map((f) => (
+                          <button
+                            key={f.title}
+                            type="button"
+                            title={f.title}
+                            aria-label={f.title}
+                            onClick={() => wrap(index, f.open, f.close)}
+                            className={cn(
+                              "h-6 w-6 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground",
+                              f.className,
+                            )}
                           >
-                            {tag}
-                          </DropdownMenuItem>
+                            {f.label}
+                          </button>
                         ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                      </div>
+
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" className="h-6 text-[11px]">
+                            Insert field
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
+                          {tags.map((tag) => (
+                            <DropdownMenuItem
+                              key={tag}
+                              onSelect={() => insertTag(index, tag)}
+                              className="font-mono text-xs"
+                            >
+                              {tag}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                   <textarea
                     ref={(el) => {
