@@ -33,6 +33,9 @@ interface BreakdownRow {
   replies: number;
   positive: number;
   sort_order: number;
+  /** Across every group, not just the twelve returned. */
+  grand_total: number;
+  group_count: number;
 }
 
 export async function GET(request: NextRequest) {
@@ -85,24 +88,31 @@ export async function GET(request: NextRequest) {
           positive: Number(r.positive),
         }));
 
+        const raw = (data ?? []) as BreakdownRow[];
+
         return {
           key: d.key,
           label: d.label,
           bucket: d.bucket,
           rows,
           /*
-           * The card's own count, per §5.5: "Each card carries its own reply
-           * count". Summed from the rows it actually shows, so the number and
-           * the bars can never disagree — including the Unknown bar, which is
-           * counted rather than dropped.
+           * §5.5: "Each card carries its own reply count."
+           *
+           * The TRUE total across every group, not the sum of the twelve rows
+           * shown. Summing the visible rows made a dimension with a long tail
+           * under-report itself — the six cards read 6,378 / 3,358 / 3,630 /
+           * 8,015 for one identical population, which is six different answers
+           * to the same question.
            */
-          total: rows.reduce((sum, r) => sum + r.replies, 0),
+          total: Number(raw[0]?.grand_total ?? 0),
+          groupCount: Number(raw[0]?.group_count ?? rows.length),
           /*
            * How much of this card is 'Unknown'. A dimension answered for 8% of
            * repliers is not a finding, and the card has to be able to say so
            * rather than presenting a confident-looking bar chart of nothing.
            */
           unknown: rows.find((r) => r.value === "Unknown" || r.value === "Unassigned")?.replies ?? 0,
+          shown: rows.reduce((sum, r) => sum + r.replies, 0),
         };
       }),
     );

@@ -43,7 +43,11 @@ interface Breakdown {
   label: string;
   bucket: string | null;
   rows: BreakdownRow[];
+  /** Every group, not just the ones drawn. */
   total: number;
+  groupCount: number;
+  /** Summed over the drawn rows only. */
+  shown: number;
   unknown: number;
 }
 
@@ -169,10 +173,20 @@ function BreakdownCard({
         minority of repliers cannot support a conclusion, and the card has to
         say so rather than looking confident.
       */}
-      {unknownShare >= 0.2 ? (
+      {unknownShare >= 0.2 || breakdown.groupCount > breakdown.rows.length ? (
         <p className="border-t px-4 py-2 text-[11px] leading-snug text-muted-foreground">
-          {percent(unknownShare, 0)} of these repliers have no {breakdown.label.toLowerCase()} on
-          record — read the rest as a sample, not a total.
+          {breakdown.groupCount > breakdown.rows.length ? (
+            <>
+              Top {breakdown.rows.length} of {fullNumber(breakdown.groupCount)}.{" "}
+            </>
+          ) : null}
+          {unknownShare >= 0.2 ? (
+            <>
+              {percent(unknownShare, 0)} of these repliers have no{" "}
+              {breakdown.label.toLowerCase()} on record — read the rest as a sample, not a
+              total.
+            </>
+          ) : null}
         </p>
       ) : null}
     </Card>
