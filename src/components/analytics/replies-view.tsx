@@ -1,12 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Loader2, Search, X } from "lucide-react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronLeft, ChevronRight, Loader2, Plus, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useAnalyticsFilters } from "./filters-context";
 import { Segmented } from "./segmented";
 import { fullNumber, percent } from "@/lib/analytics/format.ts";
+import {
+  STAGE_ORDER,
+  TERMINAL_TYPES,
+  outcomeLabel as outcomeTypeLabel,
+} from "@/lib/analytics/outcomes.ts";
 import { cn } from "@/lib/utils";
 
 /*
@@ -71,6 +76,8 @@ interface ReplyRow {
   company: string | null;
   officeCity: string | null;
   salesVolume: string | null;
+  /** Outcome types already logged by hand against this reply. */
+  logged: string[];
 }
 
 interface RowsResponse {
@@ -190,6 +197,115 @@ function BreakdownCard({
         </p>
       ) : null}
     </Card>
+  );
+}
+
+/* ---------- logging an outcome from a reply ----------------------------- */
+
+/*
+ * §7: "Outcomes reach the system two ways: logged by hand from a reply, or fed
+ * in automatically from another system."
+ *
+ * Inline on the reply rather than behind a dialog: the operator is reading the
+ * reply when they learn a call got booked, and a modal would make them lose it.
+ * Already-logged types render as removable chips so the same outcome is never
+ * recorded twice by someone who could not tell whether the first click worked.
+ */
+function LogOutcome({ reply }: { reply: ReplyRow }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+
+  const refresh = () => {
+    for (const key of ["reply-rows", "attribution", "attribution-events", "reply-breakdowns"]) {
+      void queryClient.invalidateQueries({ queryKey: [key] });
+    }
+  };
+
+  const log = useMutation({
+    mutationFn: async (eventType: string) => {
+      const response = await fetch("/api/outcomes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ replyId: reply.id, eventType }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Could not log the outcome");
+      return body;
+    },
+    onSuccess: () => {
+      setOpen(false);
+      refresh();
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: async (eventType: string) => {
+      const id = `manual:${reply.id}:${eventType}`;
+      const response = await fetch(`/api/outcomes?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "Could not remove the outcome");
+      return body;
+    },
+    onSuccess: refresh,
+  });
+
+  const busy = log.isPending || remove.isPending;
+
+  return (
+    <span className="flex flex-wrap items-center gap-1.5">
+      {reply.logged.map((type) => (
+        <button
+          key={type}
+          type="button"
+          disabled={busy}
+          onClick={() => remove.mutate(type)}
+          title="Remove this outcome"
+          className="inline-flex items-center gap-1 rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+        >
+          {outcomeTypeLabel(type)}
+          <X className="size-2.5" />
+        </button>
+      ))}
+
+      {open ? (
+        <select
+          autoFocus
+          aria-label="Outcome to log"
+          disabled={busy}
+          defaultValue=""
+          onChange={(e) => e.target.value && log.mutate(e.target.value)}
+          onBlur={() => setOpen(false)}
+          className="h-6 rounded border bg-background px-1 text-[11px]"
+        >
+          <option value="">Choose…</option>
+          {[...STAGE_ORDER, ...TERMINAL_TYPES]
+            .filter((t) => !reply.logged.includes(t))
+            .map((t) => (
+              <option key={t} value={t}>
+                {outcomeTypeLabel(t)}
+              </option>
+            ))}
+        </select>
+      ) : (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => setOpen(true)}
+          className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="size-2.5 animate-spin" /> : <Plus className="size-2.5" />}
+          Log outcome
+        </button>
+      )}
+
+      {log.error || remove.error ? (
+        <span className="text-[11px] text-red-700">
+          {(log.error ?? remove.error)?.message}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -335,6 +451,10 @@ function ReplyList({
                 {reply.company ? <span>· {reply.company}</span> : null}
                 {reply.officeCity ? <span>· {reply.officeCity}</span> : null}
                 {reply.salesVolume ? <span>· {reply.salesVolume}</span> : null}
+              </div>
+
+              <div className="mt-2">
+                <LogOutcome reply={reply} />
               </div>
             </li>
           ))}

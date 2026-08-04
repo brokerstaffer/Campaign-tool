@@ -33,6 +33,7 @@ interface Row {
   company: string | null;
   office_city: string | null;
   sales_volume: string | null;
+  logged: string[] | null;
   total_count: number;
 }
 
@@ -90,6 +91,7 @@ export async function GET(request: NextRequest) {
         company: r.company,
         officeCity: r.office_city,
         salesVolume: r.sales_volume,
+        logged: r.logged ?? [],
       })),
     });
   } catch (error) {
