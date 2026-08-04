@@ -43,6 +43,13 @@ export interface CampaignRow {
    */
   avgReplySeconds: number | null;
   /*
+   * How fast WE answer — a measure of the team, not the copy. Comes from the
+   * portal, because the team replies from its inbox and EmailBison's thread
+   * therefore holds no follow-up at all. Null below a usable sample size.
+   */
+  medianFollowUpSeconds: number | null;
+  followUpSampleSize: number | null;
+  /*
    * Derived from the bounce notification's subject, NOT from EmailBison, which
    * exposes only a single `bounced` total. hard + soft will not sum exactly to
    * `bounces` — a handful of bounces produce no notification we stored — which
@@ -124,6 +131,7 @@ export const COLUMNS: ColumnDef[] = [
   // Timing
   { key: "medianReply", label: "Median Reply", group: "Timing", defaultVisible: true, render: (r) => duration(r.medianReplySeconds) },
   { key: "avgReply", label: "Avg Reply", group: "Timing", defaultVisible: false, render: (r) => duration(r.avgReplySeconds) },
+  { key: "medianFollowUp", label: "Median Follow-up", group: "Timing", defaultVisible: false, render: (r) => duration(r.medianFollowUpSeconds) },
 
   /*
    * Events (WT §5.3): "so you can read outcomes alongside reply rates in one

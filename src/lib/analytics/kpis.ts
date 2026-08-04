@@ -8,6 +8,7 @@ import {
   replyRate,
 } from "./metrics.ts";
 import type { ResolvedFilters } from "./query-params.ts";
+import { fetchFollowUpOverall } from "./follow-up.ts";
 
 /*
  * Assembles the KPI band from three sources, because no single one has all of it:
@@ -176,43 +177,12 @@ async function fetchProspects(
   }
 }
 
-/**
- * Median Follow-up Time from the portal.
- *
- * Returns null rather than throwing: this is one tile out of twelve, and an
- * upstream outage should degrade it to a dash, not blank the whole band.
+/*
+ * Median Follow-up Time moved to ./follow-up.ts when the portal gained a
+ * per-campaign breakdown — the Campaigns table needs the same upstream, and two
+ * copies of a fetch would eventually disagree about the TTL or the
+ * content-type guard.
  */
-async function fetchFollowUpTime(
-  from: string,
-  to: string,
-): Promise<{ seconds: number | null; sampleSize: number | null; businessHours: string | null }> {
-  const base = process.env.PORTAL_BASE_URL;
-  const token = process.env.PORTAL_TOKEN;
-  if (!base || !token) {
-    return { seconds: null, sampleSize: null, businessHours: null };
-  }
-
-  try {
-    const response = await fetch(
-      `${base}/api/metrics/follow-up-time?from=${from}&to=${to}&token=${token}`,
-      { next: { revalidate: UPSTREAM_TTL_SECONDS } },
-    );
-    // The portal host rewrites blocked /api/* to an HTML page with status 200,
-    // so ok alone is not proof — check the content type before parsing.
-    const type = response.headers.get("content-type") ?? "";
-    if (!response.ok || !type.includes("application/json")) {
-      return { seconds: null, sampleSize: null, businessHours: null };
-    }
-    const body = await response.json();
-    return {
-      seconds: body?.overall?.median_seconds ?? null,
-      sampleSize: body?.overall?.sample_size ?? null,
-      businessHours: body?.business_hours ?? null,
-    };
-  } catch {
-    return { seconds: null, sampleSize: null, businessHours: null };
-  }
-}
 
 export async function loadKpis(
   filters: ResolvedFilters,
@@ -232,7 +202,7 @@ export async function loadKpis(
     await Promise.all([
       sb.rpc("analytics_kpis", { ...args, p_compare: filters.compare }),
       sb.rpc("analytics_reply_timing", args),
-      fetchFollowUpTime(filters.from, filters.to),
+      fetchFollowUpOverall(filters.from, filters.to),
       fetchProspects(filters.from, filters.to, filters.campaignIds),
       filters.compare && filters.compareFrom && filters.compareTo
         ? sb.rpc("analytics_reply_timing", {
@@ -242,7 +212,7 @@ export async function loadKpis(
           })
         : Promise.resolve(null),
       filters.compare && filters.compareFrom && filters.compareTo
-        ? fetchFollowUpTime(filters.compareFrom, filters.compareTo)
+        ? fetchFollowUpOverall(filters.compareFrom, filters.compareTo)
         : Promise.resolve(null),
       filters.compare && filters.compareFrom && filters.compareTo
         ? fetchProspects(filters.compareFrom, filters.compareTo, filters.campaignIds)

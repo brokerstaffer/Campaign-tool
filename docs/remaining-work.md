@@ -96,9 +96,9 @@ counted there — never silently dropped, or the bars will quietly under-report.
 | # | Item | Status |
 |---|---|---|
 | M1 | **"Positive" reads 113 where the reference showed 389** | **Blocked on a decision.** `replies.interested` is set on 115 of 7,988 replies (1.4%); the reference implies ~10%. Distorts Positive, Positive Rate (2.9% vs 10.6%) and Lead-to-Email (1:2,062 vs 1:700). Cannot be fixed by code — needs to know what counts as positive |
-| M2 | **Sentiment `−` (negative)** | Column exists and renders, but nothing populates it. WT §5.3 and REQ both list it. Needs a category vocabulary — same decision as M1 |
-| M3 | **Bounces split soft / hard** | REQ page 2: "Bounces (soft/hard)". Only a combined total today. Need to confirm EmailBison exposes the split |
-| M4 | **Average Reply Time** | REQ page 2 lists "Reply Time, **Average** Reply Time" as two things, and the outfound reference shows "Avg Reply Time 8.4d". We ship median only. Median is the better statistic for skewed reply data — recommend keeping it and *adding* mean rather than swapping |
+| M2 | **Sentiment `−` / `~`** | REMOVED 2026-08-05 at the client's direction. Both specs list them, but nothing populates `replies.sentiment`, so every row read 0 — which says "we measured and found none" rather than "not measured". The DB column and RPC expressions remain, so adding a vocabulary later is a data change, not a rebuild. |
+| M3 | ✅ DONE — **Bounces split soft / hard** | REQ page 2: "Bounces (soft/hard)". Only a combined total today. Need to confirm EmailBison exposes the split |
+| M4 | ✅ DONE — **Average Reply Time** | REQ page 2 lists "Reply Time, **Average** Reply Time" as two things, and the outfound reference shows "Avg Reply Time 8.4d". We ship median only. Median is the better statistic for skewed reply data — recommend keeping it and *adding* mean rather than swapping |
 
 ---
 
@@ -107,7 +107,7 @@ counted there — never silently dropped, or the bars will quietly under-report.
 | # | Where | Missing |
 |---|---|---|
 | C1 | Copy & Offer table | **Positive, Negative, Neutral, Meetings** as raw counts (WT §6.1 lists 9 columns; we show 5) |
-| C2 | Campaigns table | **Median Follow-up** (WT §5.3) |
+| C2 | ✅ DONE 2026-08-05 | **Median Follow-up** — was blocked; the portal added `by_campaign` to /api/metrics/follow-up-time and the column now reads from it. Campaigns under 5 samples render a dash rather than one person's reply time. Live spread: 4 min to 452 min, which the single blended 19m figure hid entirely. |
 | C3 | Campaigns table | **Events group: Signups, Meetings, Visits, Customers, E:S, E:M** (WT §5.3 + §7: "The same event counts also appear as optional columns in the Campaigns table") |
 | C4 | Offers | Roll up by client / brand (REQ page 1: "aggregate positive-rate by client/brand"; WT §6.2) |
 
