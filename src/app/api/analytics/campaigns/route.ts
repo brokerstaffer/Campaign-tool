@@ -43,6 +43,12 @@ export async function GET(request: NextRequest) {
       bounces: Number(r.bounces),
       medianReplySeconds:
         r.median_reply_seconds === null ? null : Number(r.median_reply_seconds),
+      avgReplySeconds:
+        r.avg_reply_seconds === null || r.avg_reply_seconds === undefined
+          ? null
+          : Number(r.avg_reply_seconds),
+      bouncesHard: Number(r.bounces_hard ?? 0),
+      bouncesSoft: Number(r.bounces_soft ?? 0),
       introductions: Number(r.introductions ?? 0),
       phoneScreens: Number(r.phone_screens ?? 0),
       interviews: Number(r.interviews ?? 0),

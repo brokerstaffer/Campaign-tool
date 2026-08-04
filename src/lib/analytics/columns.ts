@@ -39,6 +39,20 @@ export interface CampaignRow {
   bounces: number;
   medianReplySeconds: number | null;
   /*
+   * The mean beside the median. They answer different questions: the median is
+   * the typical prospect, the mean is dragged by the one who replied three
+   * weeks later — and a wide gap between them is itself the finding.
+   */
+  avgReplySeconds: number | null;
+  /*
+   * Derived from the bounce notification's subject, NOT from EmailBison, which
+   * exposes only a single `bounced` total. hard + soft will not sum exactly to
+   * `bounces` — a handful of bounces produce no notification we stored — which
+   * is why these are named for the classification rather than for "bounces".
+   */
+  bouncesHard: number;
+  bouncesSoft: number;
+  /*
    * Outcome counts, attributed to this campaign (WT §7). Only outcomes we can
    * PROVE this campaign earned are here, so these sum to less than the
    * Attribution tab's totals — Instantly and unmatched outcomes belong to no
@@ -88,6 +102,16 @@ export const COLUMNS: ColumnDef[] = [
   { key: "humanRate", label: "Human %", group: "Rates", defaultVisible: true, render: (r) => percent(humanRate(r.humanReplies, r.sent), 2) },
   { key: "positiveRate", label: "Positive %", group: "Rates", defaultVisible: true, render: (r) => percent(positiveRate(r.positive, r.replies), 2) },
   { key: "bounceRate", label: "Bounce %", group: "Rates", defaultVisible: false, render: (r) => percent(bounceRate(r.bounces, r.sent), 2) },
+  /*
+   * A "soft" bounce is a delay — a receiving server asking us to retry — and
+   * EmailBison counts it in the same total as a permanent failure. Live data:
+   * 605 of 4,133 bounce notifications are delays, and one campaign is 33%
+   * delays, so its real failure rate is a third lower than the headline. Hard
+   * is the number that should drive suppression decisions.
+   */
+  { key: "bouncesHard", label: "Hard", group: "Rates", defaultVisible: false, render: (r) => fullNumber(r.bouncesHard) },
+  { key: "bouncesSoft", label: "Soft (delay)", group: "Rates", defaultVisible: false, render: (r) => fullNumber(r.bouncesSoft) },
+  { key: "hardBounceRate", label: "Hard %", group: "Rates", defaultVisible: false, render: (r) => percent(bounceRate(r.bouncesHard, r.sent), 2) },
   { key: "leadToEmail", label: "Lead:Email", group: "Rates", defaultVisible: true, render: (r) => ratio(leadToEmail(r.sent, r.positive)) },
 
   // Reply sentiment. `negative` is honestly 0 until a classifier exists —
@@ -103,6 +127,7 @@ export const COLUMNS: ColumnDef[] = [
 
   // Timing
   { key: "medianReply", label: "Median Reply", group: "Timing", defaultVisible: true, render: (r) => duration(r.medianReplySeconds) },
+  { key: "avgReply", label: "Avg Reply", group: "Timing", defaultVisible: false, render: (r) => duration(r.avgReplySeconds) },
 
   /*
    * Events (WT §5.3): "so you can read outcomes alongside reply rates in one
