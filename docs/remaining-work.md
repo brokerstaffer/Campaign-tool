@@ -10,7 +10,35 @@ memory. `✅` means built and working in production today.
 
 ---
 
-## The one that changes the most: the Replies view
+## ✅ DONE — the Replies view (shipped 2026-08-04)
+
+Built and live. All nine items below (R1–R8) are complete except **R9**, which is
+listed under "Still open". What actually happened:
+
+* **Brokerage = the client**, resolved from the campaign — no lead data needed,
+  97.8% coverage. `company` is kept as a separate "Current brokerage" dimension
+  because it means where the replying agent works *today*.
+* Six dimensions live: Brokerage (client), Current brokerage, Location, Sales
+  volume (banded), MLS affiliation, Top producing city — all driven by
+  `reply_dimensions`, so per-client lists need no rebuild (R4).
+* 6,679 repliers synced with 72,466 attributes, fetched **by id** rather than by
+  walking the list.
+* Two bugs found by reading the rendered page: the view counted bounce
+  notifications and excluded campaigns (KPI said 3.9K, view said 8,015), and each
+  card reported the sum of its visible rows as its own total. Both fixed in 030;
+  all six cards, the reply list and the KPI band now agree exactly.
+* Reply list optimised 1,190ms → 310ms by paging first and decorating second.
+
+**A pagination fault was found and fixed while doing this**, affecting far more
+than the Replies view: EmailBison pages are a fixed 15 rows (`per_page` is
+ignored everywhere) and page-based paging is capped at 1,000 pages — a silent
+ceiling of 15,000 records. `fetchAllPages` now uses cursor pagination throughout.
+Replies stand at ~8,000; page mode would have started dropping them at 15,000
+with nothing in the logs.
+
+---
+
+## Superseded — original analysis of the Replies view
 
 REQ page 2 calls this **VIEW 3** and gives it a third of the document. WT §5.5
 specifies it in full. **It is the single largest missing piece**, and everything
