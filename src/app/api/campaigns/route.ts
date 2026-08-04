@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
   const status = params.get("status") ?? "all";
   const search = (params.get("q") ?? "").trim();
   const clientId = params.get("client_id");
+  const tag = params.get("tag");
   const limit = Math.min(Number(params.get("limit") ?? 200), 500);
   const offset = Math.max(Number(params.get("offset") ?? 0), 0);
 
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
   // that is irrelevant; revisit with a trigram index if this grows.
   if (search) query = query.ilike("name", `%${search}%`);
 
-  const [{ data: rows, error, count }, mappings, clients, counts] = await Promise.all([
+  const [{ data: rows, error, count }, mappings, clients, counts, allTags] = await Promise.all([
     query.order("lifetime_emails_sent", { ascending: false, nullsFirst: false })
       .range(offset, offset + limit - 1),
     sb.from("campaign_clients").select("campaign_id, client_id, excluded, ambiguous"),
@@ -53,6 +54,10 @@ export async function GET(request: NextRequest) {
     // One grouped read for the status pills, so their numbers describe the
     // whole workspace rather than the current page.
     sb.from("campaigns").select("status").eq("team_id", teamId).is("deleted_at", null),
+    // Tags for the filter's own dropdown, read from the data rather than a
+    // hardcoded list — a tag added in EmailBison must appear here without a
+    // deploy, and one that no longer exists must stop being offered.
+    sb.from("campaigns").select("tags").eq("team_id", teamId).is("deleted_at", null),
   ]);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -70,6 +75,22 @@ export async function GET(request: NextRequest) {
       ambiguous: Boolean(mapping?.ambiguous),
     };
   });
+
+  /*
+   * Filtered in JS, not SQL. `tags` is a jsonb array of objects and the filter
+   * matches on the NAME inside them, which PostgREST cannot express without a
+   * containment operator over the whole object. At ~100 campaigns already
+   * fetched, doing it here is free; at ten times that it wants a GIN index and
+   * an RPC.
+   */
+  if (tag) {
+    items = items.filter((c) =>
+      (Array.isArray(c.tags) ? c.tags : []).some(
+        (t: unknown) =>
+          typeof t === "object" && t !== null && (t as { name?: string }).name === tag,
+      ),
+    );
+  }
 
   if (clientId) {
     items =
@@ -89,5 +110,16 @@ export async function GET(request: NextRequest) {
     statusCounts,
     all: (counts.data ?? []).length,
     clients: (clients.data ?? []).map((c) => ({ id: c.id, name: c.name })),
+    tags: [
+      ...new Set(
+        (allTags.data ?? []).flatMap((row) =>
+          (Array.isArray(row.tags) ? row.tags : [])
+            .map((t: unknown) =>
+              typeof t === "object" && t !== null ? (t as { name?: string }).name : null,
+            )
+            .filter((n): n is string => Boolean(n)),
+        ),
+      ),
+    ].sort(),
   });
 }

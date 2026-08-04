@@ -19,6 +19,8 @@ import { CopySequenceDialog } from "@/components/campaigns/copy-sequence-dialog"
 import { PushSequenceDialog } from "@/components/campaigns/push-sequence-dialog";
 import { BulkDeployPanel, useBulkDeploy } from "@/components/analytics/bulk-deploy";
 import { SequenceEditor, type EditableStep } from "@/components/campaigns/sequence-editor";
+import { CopyTagsPanel } from "@/components/campaigns/copy-tags-panel";
+import { OfferPicker } from "@/components/campaigns/offer-picker";
 import { fullNumber, percent } from "@/lib/analytics/format.ts";
 import { STATUS_TONE, canApply, isKnownStatus } from "@/lib/campaigns/status.ts";
 import { cn } from "@/lib/utils";
@@ -104,7 +106,12 @@ interface DetailResponse {
   sentStepIds: number[];
 }
 
-const TABS = ["Overview", "Sequence", "Settings", "Activity"] as const;
+/*
+ * WT §9.2 lists five tabs. "Copy & Offer" — the dimension tags for each email
+ * and which offer this campaign sells — existed only nested inside Sequence,
+ * where you had to expand a step to reach it. Its own tab, per the spec.
+ */
+const TABS = ["Overview", "Sequence", "Copy & Offer", "Settings", "Activity"] as const;
 type Tab = (typeof TABS)[number];
 
 export function CampaignDetail({ id }: { id: number }) {
@@ -290,9 +297,91 @@ export function CampaignDetail({ id }: { id: number }) {
             sentStepIds={sentStepIds ?? []}
           />
         ) : null}
+        {tab === "Copy & Offer" ? (
+          <CopyAndOffer campaignId={campaign.id} steps={sequence} />
+        ) : null}
         {tab === "Settings" ? <Settings campaign={campaign} /> : null}
         {tab === "Activity" ? <ActivityLog rows={activity} /> : null}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Copy & Offer for one campaign (WT §9.2).
+ *
+ * Two things on one screen because they answer the same question — "what is
+ * this campaign actually selling, and how is it worded?"
+ *
+ * Only the FIRST email is taggable, matching the analysis: later steps inherit
+ * the opener's framing, so tagging them separately would create dimensions that
+ * cannot be compared. Follow-ups are listed but read-only, so the sequence is
+ * still visible without implying they carry their own copy identity.
+ */
+function CopyAndOffer({ campaignId, steps }: { campaignId: number; steps: Step[] }) {
+  const ordered = [...steps].sort((a, b) => (a.step_order ?? 0) - (b.step_order ?? 0));
+  const first = ordered[0] ?? null;
+  const followUps = ordered.slice(1);
+
+  if (!first) {
+    return (
+      <p className="py-16 text-center text-sm text-muted-foreground">
+        This campaign has no sequence yet, so there is no copy to tag.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-4">
+      <section className="rounded-xl border bg-card">
+        <div className="border-b px-5 py-3">
+          <h2 className="text-sm font-semibold">Offer</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Which offer this campaign sells. Offers are tracked in their own right on
+            the Copy &amp; Offer tab, not just as campaign names.
+          </p>
+        </div>
+        <div className="px-5 py-4">
+          <OfferPicker campaignId={campaignId} />
+        </div>
+      </section>
+
+      <section className="rounded-xl border bg-card">
+        <div className="border-b px-5 py-3">
+          <h2 className="text-sm font-semibold">Copy dimensions</h2>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {first.email_subject || "(no subject)"}
+          </p>
+        </div>
+        <div className="px-5 py-4">
+          <CopyTagsPanel stepId={first.id} isFirstEmail />
+        </div>
+      </section>
+
+      {followUps.length ? (
+        <section className="rounded-xl border bg-card">
+          <div className="border-b px-5 py-3">
+            <h2 className="text-sm font-semibold">Follow-ups</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Not tagged. Copy analysis covers the opening email only — a follow-up
+              inherits its framing, so tagging it separately would compare a
+              dimension against itself.
+            </p>
+          </div>
+          <ul className="divide-y">
+            {followUps.map((step, i) => (
+              <li key={step.id} className="flex items-baseline gap-3 px-5 py-2.5 text-sm">
+                <span className="tnum shrink-0 text-xs text-muted-foreground">
+                  Step {i + 2}
+                </span>
+                <span className="min-w-0 flex-1 truncate">
+                  {step.email_subject || "(no subject)"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
 }

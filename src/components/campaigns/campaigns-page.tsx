@@ -71,6 +71,8 @@ interface ListResponse {
   statusCounts: Record<string, number>;
   all: number;
   clients: Array<{ id: string; name: string }>;
+  /** Distinct tag names in use, read from the data rather than hardcoded. */
+  tags?: string[];
 }
 
 interface ActionResult {
@@ -130,6 +132,7 @@ export function CampaignsPage() {
 
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
+  const [tag, setTag] = useState("");
   const [view, setView] = useState<"list" | "grid">("list");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [pending, setPending] = useState<{ action: CampaignAction; ids: number[] } | null>(null);
@@ -138,10 +141,11 @@ export function CampaignsPage() {
   );
 
   const { data, isFetching } = useQuery<ListResponse>({
-    queryKey: ["campaigns", status, search],
+    queryKey: ["campaigns", status, search, tag],
     queryFn: async () => {
       const params = new URLSearchParams({ status });
       if (search) params.set("q", search);
+      if (tag) params.set("tag", tag);
       const response = await fetch(`/api/campaigns?${params}`);
       if (!response.ok) throw new Error("Failed to load campaigns");
       return response.json();
@@ -277,6 +281,27 @@ export function CampaignsPage() {
             className="h-8 pl-8 text-xs"
           />
         </div>
+
+        {/*
+          Tag filter (WT §9.1, REQ page 4). Rendered only when tags exist —
+          an always-present control offering nothing but "All tags" is a dead
+          affordance that makes the toolbar look broken.
+        */}
+        {(data?.tags?.length ?? 0) > 0 ? (
+          <select
+            aria-label="Filter by tag"
+            value={tag}
+            onChange={(e) => setTag(e.target.value)}
+            className="h-8 shrink-0 rounded-md border bg-background px-2 text-xs"
+          >
+            <option value="">All tags</option>
+            {data!.tags!.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        ) : null}
 
         <div className="ml-auto flex items-center gap-0.5 rounded-md border p-0.5">
           {(["list", "grid"] as const).map((mode) => {

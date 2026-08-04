@@ -32,8 +32,10 @@ export async function GET(
   const sb = getSupabase();
   const teamId = TEAM_ID();
 
-  const [campaign, steps, stepStats, activity, mapping] = await Promise.all([
+  const [campaign, offer, steps, stepStats, activity, mapping] = await Promise.all([
     sb.from("campaigns").select("*").eq("id", campaignId).eq("team_id", teamId).maybeSingle(),
+    // Which offer this campaign sells, for the Copy & Offer tab's picker.
+    sb.from("campaign_offers").select("offer_id").eq("campaign_id", campaignId).maybeSingle(),
     sb
       .from("sequence_steps")
       .select(
@@ -127,6 +129,7 @@ export async function GET(
       excludeReason: mapping.data?.exclude_reason ?? null,
       matchMethod: mapping.data?.match_method ?? null,
       matchedOn: mapping.data?.matched_on ?? null,
+      offer_id: offer.data?.offer_id ?? null,
     },
     sequence,
     variantCount: allSteps.filter((s) => s.is_variant).length,
