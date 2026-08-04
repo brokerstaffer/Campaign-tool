@@ -46,7 +46,12 @@ export async function GET(request: NextRequest) {
 
   const page = Math.max(1, Number(params.get("page")) || 1);
   const types = params.get("types")?.split(",").filter(Boolean) ?? [];
-  const platforms = params.get("platforms")?.split(",").filter(Boolean) ?? [];
+  // The shared `platforms` filter, already parsed and validated by
+  // resolveFilters — read from there rather than re-splitting the raw string,
+  // so the tab's own source dropdown and the global filter cannot disagree.
+  const platforms = filters.platforms.length
+    ? filters.platforms
+    : (params.get("platforms")?.split(",").filter(Boolean) ?? []);
   const search = params.get("q")?.trim() || null;
 
   try {

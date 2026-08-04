@@ -24,6 +24,23 @@ export type Preset = (typeof PRESETS)[number];
 export const SUB_VIEWS = ["charts", "clients", "campaigns", "replies"] as const;
 export type SubView = (typeof SUB_VIEWS)[number];
 
+/*
+ * Sending platforms present in the data.
+ *
+ * This stopped being cosmetic when the outcomes feed proved both are live: its
+ * campaign_id holds an EmailBison integer for some rows and an Instantly UUID
+ * for others (see 025_outcome_platform.sql).
+ *
+ * IT IS ONLY MEANINGFUL ON ATTRIBUTION, and that asymmetry is real rather than
+ * an oversight. Every send, reply, sender and campaign this dashboard holds
+ * comes from EmailBison; Instantly appears solely as the source of an outcome.
+ * So selecting Instantly correctly empties the sending tabs — we hold none of
+ * its sending data — and the filter bar says so rather than letting a blank
+ * chart read as a bug.
+ */
+export const PLATFORMS = ["emailbison", "instantly"] as const;
+export type Platform = (typeof PLATFORMS)[number];
+
 const PRESET_DAYS: Record<Exclude<Preset, "custom">, number> = {
   "7d": 7,
   "30d": 30,
@@ -105,6 +122,13 @@ function parseUuid(raw: string): string {
   return raw;
 }
 
+function parsePlatform(raw: string): Platform {
+  if (!(PLATFORMS as readonly string[]).includes(raw)) {
+    throw new Error("unknown platform");
+  }
+  return raw as Platform;
+}
+
 function parseSeries(raw: string): SeriesKey {
   if (!(SERIES_KEYS as readonly string[]).includes(raw)) {
     throw new Error("unknown series");
@@ -123,6 +147,7 @@ export const filtersSchema = z.object({
   to: isoDate.optional(),
   campaign_ids: csvOf(parseId, "campaign id"),
   client_ids: csvOf(parseUuid, "client id"),
+  platforms: csvOf(parsePlatform, "platform"),
   compare: boolish,
   // Charts-only. Parsed here so the routes share one validator.
   view: z.enum(SUB_VIEWS).optional(),
@@ -138,6 +163,8 @@ export interface ResolvedFilters {
   to: string;
   campaignIds: number[];
   clientIds: string[];
+  /** Empty = every platform, which is what an absent filter means. */
+  platforms: Platform[];
   compare: boolean;
   /** Present only when `compare` is on. */
   compareFrom?: string;
@@ -189,6 +216,7 @@ export function resolveFilters(
     to,
     campaignIds: parsed.campaign_ids,
     clientIds: parsed.client_ids,
+    platforms: parsed.platforms,
     compare: parsed.compare,
     view: parsed.view ?? "charts",
     series: parsed.series.length ? parsed.series : DEFAULT_SERIES,
@@ -242,6 +270,7 @@ export function filtersToSearchParams(
 
   setList("campaign_ids", filters.campaignIds);
   setList("client_ids", filters.clientIds);
+  setList("platforms", filters.platforms);
   if (filters.compare) params.set("compare", "1");
   if (filters.view && filters.view !== "charts") params.set("view", filters.view);
 

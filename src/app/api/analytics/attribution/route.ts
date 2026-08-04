@@ -76,13 +76,18 @@ export async function GET(request: NextRequest) {
         p_to: filters.to,
         p_client_ids: clientIds,
         p_campaign_ids: campaignIds,
-        p_platforms: null,
+        // The only endpoint where this is real: outcomes are the sole data with
+        // more than one platform behind them.
+        p_platforms: filters.platforms.length ? filters.platforms : null,
       }),
       sb.rpc("analytics_outcome_campaigns", {
         p_team_id: teamId,
         p_from: filters.from,
         p_to: filters.to,
         p_client_ids: clientIds,
+        // Instantly outcomes are credited to no campaign, so selecting it
+        // correctly empties this table instead of ignoring the filter.
+        p_platforms: filters.platforms.length ? filters.platforms : null,
       }),
       sb.rpc("analytics_outcome_coverage", {
         p_team_id: teamId,
@@ -147,6 +152,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       range: { from: filters.from, to: filters.to },
+      platforms: filters.platforms,
       emailsSent,
       measures,
       funnel,
