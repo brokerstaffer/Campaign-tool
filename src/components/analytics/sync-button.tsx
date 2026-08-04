@@ -31,7 +31,8 @@ export function SyncButton({
       if (!response.ok) throw new Error(body.error ?? "Sync failed");
       return body as {
         status: string;
-        detail?: { campaigns?: number; markedDeleted?: number; restored?: number };
+        rowsWritten?: number;
+        detail?: Record<string, number | undefined>;
       };
     },
     onSuccess: () => {
@@ -41,7 +42,17 @@ export function SyncButton({
     },
   });
 
-  const detail = run.data?.detail;
+  /*
+   * Rendered from whatever the job actually returned, rather than a fixed list
+   * of campaign fields. Each job reports different counts — outcomes reports
+   * emailbison/instantly/direct, entities reports campaigns/markedDeleted — and
+   * a hardcoded reader showed "0 campaigns" for every one of them, which reads
+   * as a failed sync.
+   */
+  const summary = Object.entries(run.data?.detail ?? {})
+    .filter(([, v]) => typeof v === "number" && v > 0)
+    .map(([k, v]) => `${v} ${k.replace(/([A-Z])/g, " $1").toLowerCase()}`)
+    .join(", ");
 
   return (
     <div className="flex items-center gap-2">
@@ -67,9 +78,7 @@ export function SyncButton({
         ) : (
           <span className="flex items-center gap-1 text-xs text-emerald-700">
             <Check className="size-3" />
-            {detail?.campaigns ?? 0} campaigns
-            {detail?.markedDeleted ? `, ${detail.markedDeleted} removed` : ""}
-            {detail?.restored ? `, ${detail.restored} restored` : ""}
+            {summary || `${run.data?.rowsWritten ?? 0} rows`}
           </span>
         )
       ) : null}

@@ -20,7 +20,15 @@ import { runJob } from "@/lib/sync/runner";
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-const MANUAL_JOBS = ["sync-entities", "sync-steps", "sync-senders", "sync-replies"] as const;
+const MANUAL_JOBS = [
+  "sync-entities",
+  "sync-steps",
+  "sync-senders",
+  "sync-replies",
+  "sync-outcomes",
+  // Bounded by design — one batch off the resolver queue, not a full drain.
+  "sync-outcome-attribution",
+] as const;
 
 export async function POST(request: NextRequest) {
   const cookieStore = await cookies();

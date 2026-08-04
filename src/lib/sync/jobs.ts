@@ -677,7 +677,9 @@ export const syncOutcomes: JobFn = async ({ teamId, watermark }): Promise<JobRes
   }
 
   const startedAt = new Date().toISOString();
-  const rows: Record<string, unknown>[] = [];
+  // Split by whether the FEED decides the attribution or the resolver does.
+  const decided: Record<string, unknown>[] = [];
+  const undecided: Record<string, unknown>[] = [];
   let apiCalls = 0;
 
   for (let page = 1; ; page++) {
@@ -727,7 +729,7 @@ export const syncOutcomes: JobFn = async ({ teamId, watermark }): Promise<JobRes
        */
       const unattributable = platform === "direct" && !o.email && !o.emailbison_lead_id;
 
-      rows.push({
+      const row: Record<string, unknown> = {
         id: o.id,
         team_id: teamId,
         email: o.email ?? null,
@@ -738,20 +740,26 @@ export const syncOutcomes: JobFn = async ({ teamId, watermark }): Promise<JobRes
         source_campaign_ref: ref,
         source_platform: platform,
         source_lead_id: typeof o.emailbison_lead_id === "number" ? o.emailbison_lead_id : null,
-        ...(providedCampaign
-          ? {
-              resolved_campaign_id: providedCampaign,
-              resolution: "provided",
-              resolved_at: new Date().toISOString(),
-            }
-          : platform === "instantly"
-            ? // Counted in every total, never credited to one of our campaigns.
-              { resolution: "other_platform", resolved_at: new Date().toISOString() }
-            : unattributable
-              ? { resolution: "unresolved", resolved_at: new Date().toISOString() }
-              : {}),
         synced_at: new Date().toISOString(),
-      });
+      };
+
+      if (providedCampaign) {
+        row.resolved_campaign_id = providedCampaign;
+        row.resolution = "provided";
+        row.resolved_at = new Date().toISOString();
+        decided.push(row);
+      } else if (platform === "instantly") {
+        // Counted in every total, never credited to one of our campaigns.
+        row.resolution = "other_platform";
+        row.resolved_at = new Date().toISOString();
+        decided.push(row);
+      } else if (unattributable) {
+        row.resolution = "unresolved";
+        row.resolved_at = new Date().toISOString();
+        decided.push(row);
+      } else {
+        undecided.push(row);
+      }
     }
 
     const lastPage = Number(body.meta?.last_page) || 1;
@@ -762,17 +770,38 @@ export const syncOutcomes: JobFn = async ({ teamId, watermark }): Promise<JobRes
     }
   }
 
-  await chunkUpsert("outcome_events", rows, "id");
+  /*
+   * TWO UPSERTS, AND THE SPLIT IS THE WHOLE POINT.
+   *
+   * `resolution` / `resolved_campaign_id` / `resolved_at` are LOCALLY OWNED for
+   * a `direct` row — the resolver spent an EmailBison lookup to write them. The
+   * feed has no opinion about them, so this job must not touch them.
+   *
+   * One mixed upsert does touch them. PostgREST builds the ON CONFLICT DO UPDATE
+   * column list from the UNION of keys across the batch, so a batch holding both
+   * kinds of row writes NULL into `resolution` for every row that omitted it.
+   * Observed live: re-running this job reset 63 already-resolved rows to
+   * pending and dropped "credited to a campaign" from 388 to 337 — the hourly
+   * pair would have undone each other forever, re-spending ~800 API calls a run
+   * and leaving the coverage number visibly oscillating.
+   *
+   * Same rule as `replies.sentiment`: a cache job never writes a column it does
+   * not own.
+   */
+  await chunkUpsert("outcome_events", decided, "id");
+  await chunkUpsert("outcome_events", undecided, "id");
 
+
+  const all = [...decided, ...undecided];
   return {
-    rowsWritten: rows.length,
+    rowsWritten: all.length,
     apiCalls,
     watermark: startedAt,
     detail: {
-      outcomes: rows.length,
-      emailbison: rows.filter((r) => r.source_platform === "emailbison").length,
-      instantly: rows.filter((r) => r.source_platform === "instantly").length,
-      direct: rows.filter((r) => r.source_platform === "direct").length,
+      outcomes: all.length,
+      emailbison: all.filter((r) => r.source_platform === "emailbison").length,
+      instantly: all.filter((r) => r.source_platform === "instantly").length,
+      direct: all.filter((r) => r.source_platform === "direct").length,
     },
   };
 };

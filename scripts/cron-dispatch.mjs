@@ -4,7 +4,7 @@
  *
  *   node scripts/cron-dispatch.mjs [--dry-run]
  *
- * Railway sets a cron schedule per service, so nine jobs at five cadences would
+ * Railway sets a cron schedule per service, so twelve jobs at five cadences would
  * mean nine services. Instead ONE service runs on the finest cadence
  * (every 10 minutes) and this script decides what is actually due, reading the
  * same src/lib/sync/schedule.ts the app does.

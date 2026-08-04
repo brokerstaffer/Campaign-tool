@@ -68,7 +68,16 @@ re-fetched.
    `replies` times out — use `'estimated'` or get counts from the RPC that
    already grouped.
 
-8. **Client attribution is persisted, not recomputed.** `campaign_clients` holds
+8. **An outcome is only credited to a campaign the feed can prove is ours.**
+   The outcomes feed's `campaign_id` holds an EmailBison integer, an *Instantly*
+   UUID, or nothing. `classifyPlatform` in `src/lib/analytics/outcomes.ts` is the
+   only place that is decided, and only `emailbison` may reach
+   `resolved_campaign_id`. Resolving an Instantly row by email *succeeds* — the
+   same people are in both systems — and credits one of our campaigns with
+   another platform's result, which is the one failure this tab exists to
+   prevent. It also fails upward: EmailBison looks better, so nobody checks.
+
+9. **Client attribution is persisted, not recomputed.** `campaign_clients` holds
    the resolved mapping. Recomputing at read time would make every query do
    string matching, would let a manual override be silently undone, and would
    rewrite historical grouping when a client is renamed.
@@ -90,7 +99,7 @@ dropped — that log line is the drift detector.
 ## Syncing
 
 ```
-src/lib/sync/jobs.ts       the nine jobs, as JobFn implementations
+src/lib/sync/jobs.ts       the twelve jobs, as JobFn implementations
 src/lib/sync/runner.ts     lock + run history + circuit breaker
 src/lib/sync/schedule.ts   the cadence, as data
 src/lib/sync/scheduler.ts  the in-process ticker

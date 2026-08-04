@@ -5,6 +5,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useAnalyticsFilters } from "./filters-context";
+import { SyncButton } from "./sync-button";
 import { DASH, compactNumber, fullNumber, percent, ratio } from "@/lib/analytics/format.ts";
 import {
   PLATFORM_LABELS,
@@ -716,6 +717,23 @@ export function AttributionView() {
 
   return (
     <div className="space-y-4 bg-muted/30 p-3 sm:p-4 lg:p-6">
+      {/* Two buttons because they are two different jobs: one pulls the feed,
+          the other works the queue of outcomes whose campaign has to be found
+          by lookup. Pulling alone leaves new rows sitting at "not yet
+          resolved", which looks like the sync did nothing. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <SyncButton
+          job="sync-outcomes"
+          label="Sync outcomes"
+          invalidate={["attribution", "attribution-events"]}
+        />
+        <SyncButton
+          job="sync-outcome-attribution"
+          label="Resolve campaigns"
+          invalidate={["attribution", "attribution-events"]}
+        />
+      </div>
+
       <CoverageStrip coverage={data.coverage} />
       <Measures measures={data.measures} emailsSent={data.emailsSent} />
       {/* The campaigns table carries five numeric columns and long campaign
