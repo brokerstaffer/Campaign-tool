@@ -2,7 +2,6 @@
 
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { useAnalyticsFilters } from "./filters-context";
@@ -96,6 +95,7 @@ export function FilterBar() {
    */
   const tab = pathname?.split("/")[2] ?? "campaign";
   const supportsCompare = tab === "campaign";
+  const supportsPlatform = tab === "attribution";
 
   const { data: options } = useQuery<{ campaigns: Option[]; clients: Option[] }>({
     queryKey: ["filter-options"],
@@ -150,21 +150,27 @@ export function FilterBar() {
       />
 
       {/*
-        Platform (WT §3). Real, not cosmetic: the outcomes feed carries both
-        EmailBison and Instantly. It only changes the Attribution tab, because
-        every send, reply and sender here comes from EmailBison — so the chips
-        below say which tabs a selection actually affects rather than letting an
-        empty chart read as a bug.
+        Platform (WT §3), on the Attribution tab only.
+    
+        It is real, not cosmetic — the outcomes feed genuinely carries both
+        EmailBison and Instantly, and roughly 670 of the outcomes on that feed
+        are Instantly's. But it is the ONLY thing in the product that is: every
+        send, reply, sequence and inbox here comes from EmailBison, so on any
+        other tab there is no Instantly data for the control to reveal or
+        withhold. Shown there, it was a dropdown you could set and watch change
+        nothing, which reads as a broken filter rather than an absent one.
       */}
-      <MultiSelect
-        label="Platform"
-        options={PLATFORM_OPTIONS}
-        selected={filters.platforms}
-        onChange={(platforms) =>
-          setFilters({ platforms: platforms as typeof filters.platforms })
-        }
-        emptyText="No platforms"
-      />
+      {supportsPlatform ? (
+        <MultiSelect
+          label="Platform"
+          options={PLATFORM_OPTIONS}
+          selected={filters.platforms}
+          onChange={(platforms) =>
+            setFilters({ platforms: platforms as typeof filters.platforms })
+          }
+          emptyText="No platforms"
+        />
+      ) : null}
 
       {/*
         Reply attribute filters (REQ page 2), shown only on the Replies view.
@@ -173,27 +179,6 @@ export function FilterBar() {
         nothing. Their values come from the data, capped at the 50 most common.
       */}
       {filters.view === "replies" ? <ReplyFacetFilters /> : null}
-
-      {filters.platforms.length ? (
-        <span className="flex shrink-0 items-center gap-1">
-          {filters.platforms.map((platform) => (
-            <button
-              key={platform}
-              type="button"
-              onClick={() =>
-                setFilters({
-                  platforms: filters.platforms.filter((p) => p !== platform),
-                })
-              }
-              className="inline-flex items-center gap-1 rounded border bg-muted/50 px-1.5 py-0.5 text-xs hover:bg-muted"
-              aria-label={`Remove ${platform} filter`}
-            >
-              {PLATFORM_LABEL[platform] ?? platform}
-              <X className="size-3 text-muted-foreground" />
-            </button>
-          ))}
-        </span>
-      ) : null}
 
       {supportsCompare ? (
         <>
