@@ -102,6 +102,14 @@ export function FilterBar() {
         emptyText="No campaigns found"
       />
 
+      {/*
+        §3 says this is "hidden when you're already looking at a single client".
+        That refers to a per-client scope this app does not have — every screen
+        here is workspace-wide, and there is no client portal. Hiding it when
+        clientIds.length === 1 would be the opposite of the intent: that is
+        someone who has FILTERED to one client, and taking the control away
+        would leave them unable to change or clear it. Kept always visible.
+      */}
       <MultiSelect
         label="Clients"
         options={options?.clients ?? []}

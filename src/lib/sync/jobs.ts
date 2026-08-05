@@ -281,13 +281,18 @@ export const syncSteps: JobFn = async ({ teamId }): Promise<JobResult> => {
   const eb = createEmailBisonClient();
   const campaigns = await scopedCampaigns(teamId);
   const rows: Record<string, unknown>[] = [];
+  // Only campaigns we successfully read, so a failed fetch never looks like
+  // "this campaign has no steps any more".
+  const seenByCampaign = new Map<number, Set<number>>();
   let apiCalls = 0;
 
   await pool(campaigns, 4, async (c) => {
     try {
       const payload = await eb.getCampaignSequenceSteps(c.id);
       apiCalls++;
+      seenByCampaign.set(c.id, new Set());
       for (const s of payload?.data?.sequence_steps ?? []) {
+        seenByCampaign.get(c.id)!.add(s.id);
         rows.push({
           id: s.id,
           campaign_id: c.id,
@@ -311,7 +316,44 @@ export const syncSteps: JobFn = async ({ teamId }): Promise<JobResult> => {
   });
 
   await chunkUpsert("sequence_steps", rows, "id");
-  return { rowsWritten: rows.length, apiCalls };
+
+  /*
+   * Reconcile removals, per campaign.
+   *
+   * Upserting alone meant a step deleted in EmailBison — by the sequence
+   * editor, or by a Replace copy — lived on in the cache forever. The
+   * Campaigns table renders its step rows from here, so a replaced sequence
+   * showed the old steps beside the new ones and the step counts never went
+   * down. Found on the OpsLabs test campaign: 7 cached steps for a 4-step
+   * sequence.
+   *
+   * A hard delete, unlike campaigns, which are soft-deleted because they are
+   * the parent of the day-stats and reply tables. A step that no longer exists
+   * upstream has nothing hanging off it but its copy tags, and those are
+   * ON DELETE CASCADE precisely because a tag for a deleted email is noise.
+   *
+   * Scoped to campaigns this run actually READ. A campaign whose fetch failed
+   * contributes no ids, and wiping its steps because we could not see them
+   * would turn one bad request into data loss.
+   */
+  let removed = 0;
+  for (const [campaignId, keepIds] of seenByCampaign) {
+    const { data: stale } = await getSupabase()
+      .from("sequence_steps")
+      .select("id")
+      .eq("campaign_id", campaignId)
+      .not("id", "in", `(${[...keepIds].join(",") || "0"})`);
+
+    if (stale?.length) {
+      await getSupabase()
+        .from("sequence_steps")
+        .delete()
+        .in("id", stale.map((r) => r.id));
+      removed += stale.length;
+    }
+  }
+
+  return { rowsWritten: rows.length, apiCalls, detail: { steps: rows.length, removed } };
 };
 
 // --- daily series -----------------------------------------------------------

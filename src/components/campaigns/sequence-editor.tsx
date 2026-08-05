@@ -261,8 +261,14 @@ export function SequenceEditor({
     });
   }
 
+  /*
+   * Centred and wider than the read view. Left-aligned at max-w-4xl it left a
+   * third of a wide screen empty beside the one screen here people actually
+   * type into — the body textarea benefits from the room, and the eye should
+   * not have to travel from a left-hugging form across empty space.
+   */
   return (
-    <div className="max-w-4xl space-y-3">
+    <div className="mx-auto max-w-5xl space-y-3">
       <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
         <span className="text-xs font-medium">Editing sequence</span>
         <span className="text-[11px] text-muted-foreground">

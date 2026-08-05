@@ -13,9 +13,19 @@ import {
  *
  * That makes every view shareable, makes the browser back button step through
  * filter changes, and means a screenshot someone pastes into Slack can be
- * reopened exactly. The trade-off is that every change is a navigation, which
- * is why updates use router.replace({scroll:false}) rather than push — you
- * don't want twelve history entries from dragging a date range.
+ * reopened exactly.
+ *
+ * `push`, NOT `replace`, and the comment here used to claim both at once: it
+ * said the back button steps through filter changes and then used replace,
+ * which creates no history entry — so back left the page entirely, which is
+ * precisely what §3 says it must not do.
+ *
+ * The stated reason for replace was "you don't want twelve history entries from
+ * dragging a date range", and that fear is obsolete: the range picker commits
+ * on Apply (§3: "nothing reloads until you do"), so dragging produces no
+ * navigation at all. Every remaining caller is a deliberate click — a pill, a
+ * checkbox, a chip — and one history entry per deliberate choice is exactly
+ * what "step back through your filter changes" means.
  *
  * `today` is injected from the server layout rather than read from the browser
  * clock. If the client resolved "30d" against its own timezone and the server
@@ -70,7 +80,7 @@ export function useAnalyticsFilters(): UseAnalyticsFilters {
     (patch: Partial<ResolvedFilters>) => {
       const next = filtersToSearchParams({ ...filters, ...patch });
       const qs = next.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },
     [filters, pathname, router],
   );

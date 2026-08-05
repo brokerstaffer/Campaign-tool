@@ -629,7 +629,7 @@ function Sequence({
 
   if (!steps.length) {
     return (
-      <div className="max-w-3xl space-y-3 rounded-xl border bg-card p-5 shadow-sm">
+      <div className="mx-auto max-w-3xl space-y-3 rounded-xl border bg-card p-5 shadow-sm">
         <p className="text-sm text-muted-foreground">
           This campaign has no sequence steps cached. Run sync-steps if it has one upstream, or
           copy a sequence from another campaign.
@@ -731,6 +731,13 @@ function Sequence({
   );
 }
 
+/*
+ * Grouped into sections rather than one long column of unrelated fields.
+ * Naming, sending limits and content behaviour are three different decisions,
+ * and stacking them flat made the panel read as a settings dump with no
+ * hierarchy. Centred to match every other tab — left-aligned at max-w-2xl it
+ * left most of a wide screen empty.
+ */
 function Settings({ campaign }: { campaign: Campaign }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
@@ -782,8 +789,8 @@ function Settings({ campaign }: { campaign: Campaign }) {
   ] as const;
 
   return (
-    <div className="max-w-2xl space-y-5 rounded-xl border bg-card p-6 shadow-sm">
-      <div className="space-y-1.5">
+    <div className="mx-auto max-w-3xl space-y-4">
+      <section className="space-y-1.5 rounded-xl border bg-card p-5 shadow-sm">
         <label htmlFor="name" className="text-xs font-medium">
           Campaign name
         </label>
@@ -798,9 +805,11 @@ function Settings({ campaign }: { campaign: Campaign }) {
         <p className="text-[11px] text-muted-foreground">
           The client is derived from this name — renaming can reassign the campaign.
         </p>
-      </div>
+      </section>
 
-      <div className="grid grid-cols-2 gap-4">
+      <section className="rounded-xl border bg-card p-5 shadow-sm">
+        <h3 className="mb-3 text-xs font-semibold">Sending limits</h3>
+        <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <label htmlFor="limit" className="text-xs font-medium">
             Daily send limit
@@ -827,9 +836,12 @@ function Settings({ campaign }: { campaign: Campaign }) {
             className="tnum h-8 text-sm"
           />
         </div>
-      </div>
+        </div>
+      </section>
 
-      <div className="space-y-2.5">
+      <section className="rounded-xl border bg-card p-5 shadow-sm">
+        <h3 className="mb-3 text-xs font-semibold">Content and tracking</h3>
+        <div className="space-y-2.5">
         {toggles.map(([key, label, hint]) => (
           <label key={key} className="flex cursor-pointer items-start gap-2.5">
             <input
@@ -844,18 +856,21 @@ function Settings({ campaign }: { campaign: Campaign }) {
             </span>
           </label>
         ))}
-      </div>
-
-      {campaign.can_unsubscribe && campaign.unsubscribe_text ? (
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium">Unsubscribe wording</p>
-          <p className="rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">
-            {campaign.unsubscribe_text}
-          </p>
         </div>
-      ) : null}
 
-      <div className="flex items-center gap-3 border-t pt-4">
+        {campaign.can_unsubscribe && campaign.unsubscribe_text ? (
+          <div className="mt-4 space-y-1.5 border-t pt-4">
+            <p className="text-xs font-medium">Unsubscribe wording</p>
+            <p className="rounded-md border bg-muted/40 p-2 text-xs text-muted-foreground">
+              {campaign.unsubscribe_text}
+            </p>
+          </div>
+        ) : null}
+      </section>
+
+      {/* Sticky, so Save is reachable without scrolling back up once the
+          sections grow. */}
+      <div className="sticky bottom-0 flex items-center gap-3 rounded-xl border bg-card px-5 py-3 shadow-sm">
         <Button size="sm" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>
           {save.isPending ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : null}
           Save changes
@@ -865,15 +880,15 @@ function Settings({ campaign }: { campaign: Campaign }) {
         ) : save.isSuccess ? (
           <span className="text-xs text-emerald-700">Saved to EmailBison</span>
         ) : null}
-      </div>
 
-      {save.error ? (
-        <p className="rounded-md border border-red-300/60 bg-red-50 p-2 text-xs text-red-800">
-          {/* §9.5: the platform's actual reason, and the form still shows the
-              edit as unsaved. */}
-          {save.error.message}
-        </p>
-      ) : null}
+        {save.error ? (
+          <p className="ml-auto max-w-md rounded-md border border-red-300/60 bg-red-50 p-2 text-xs text-red-800">
+            {/* §9.5: the platform's actual reason, and the form still shows the
+                edit as unsaved. */}
+            {save.error.message}
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -890,7 +905,7 @@ function ActivityLog({ rows }: { rows: Activity[] }) {
   }
 
   return (
-    <div className="max-w-3xl space-y-2">
+    <div className="mx-auto max-w-3xl space-y-2">
       {rows.map((row) => (
         <div
           key={row.id}

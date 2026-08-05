@@ -31,6 +31,14 @@ export type CopyMode = "replace" | "append";
 export interface CopyOptions {
   includeVariants: boolean;
   includeAttachments: boolean;
+  /*
+   * §9.4 step 4: "Choose whether to bring across variants, attachments and copy
+   * tags." Tags were never carried, so a copied sequence landed Untagged and
+   * dropped out of the Copy & Offer analysis — which is precisely the analysis
+   * that told you the sequence was worth copying. Untagged currently carries
+   * 1,811 sends, and this is where a good part of that comes from.
+   */
+  includeCopyTags: boolean;
 }
 
 export interface CopyPlanStep {
@@ -226,6 +234,8 @@ export interface CopyOutcome {
   error?: string;
   /** Set when the target was left without a sequence. Loud on purpose. */
   targetLeftEmpty?: boolean;
+  /** Copy dimensions carried across, when asked for (§9.4). */
+  tagsCopied?: number;
 }
 
 /**
@@ -300,16 +310,28 @@ export async function applyCopy(
 
   let deleted = 0;
   try {
-    if (mode === "replace") {
-      // Serial, not concurrent: a partial failure should stop rather than
-      // race ahead and delete more than it can report.
-      for (const step of targetSteps) {
-        await eb.deleteSequenceStep(step.id);
-        deleted++;
-      }
-    }
-
-    const offset = mode === "append" ? targetSteps.length : 0;
+    /*
+     * CREATE FIRST, DELETE LAST — even for Replace.
+     *
+     * EmailBison refuses to remove a campaign's final step: "Woops, you need at
+     * least one sequence step". Deleting everything up front therefore fails on
+     * the last one, and by then the other steps are already gone — the campaign
+     * is left with a single orphaned step and the copy reports an error.
+     *
+     * It went unnoticed because Replace into an EMPTY campaign has nothing to
+     * delete and works fine; it only breaks when replacing a real sequence,
+     * which is the case that matters. Reproduced on the OpsLabs test campaign:
+     * deleted 3 of 4, then failed.
+     *
+     * The sequence editor's PUT route already documents this rule — "deletes
+     * run LAST so a sequence is never briefly empty" — and this path simply did
+     * not follow it.
+     *
+     * The new steps are appended after the existing ones and the originals are
+     * removed afterwards, which leaves the survivors numbered from
+     * targetSteps.length + 1. They are renumbered below.
+     */
+    const offset = targetSteps.length;
     const orderOf = new Map<number, number>();
     selected.forEach((step, index) => orderOf.set(step.id, offset + index + 1));
 
@@ -338,6 +360,164 @@ export async function applyCopy(
       await eb.createSequenceSteps(targetId, target?.name ?? "Sequence", payload);
     }
 
+    if (mode === "replace") {
+      // Serial, not concurrent: a partial failure should stop rather than race
+      // ahead and delete more than it can report. Safe now — the replacements
+      // already exist, so the campaign is never without a sequence.
+      for (const step of targetSteps) {
+        await eb.deleteSequenceStep(step.id);
+        deleted++;
+      }
+    }
+
+    /*
+     * Carry the copy dimensions over, matched by POSITION.
+     *
+     * EmailBison does not return the ids it just created, and re-reading the
+     * target's sequence is the only way to learn them. Matching by order rather
+     * than by subject because a subject can repeat across steps (every
+     * follow-up here inherits the opener's) while position is unique.
+     *
+     * Failing here must NOT fail the copy: the sequence is already live on
+     * EmailBison at this point, and reporting an error the operator would
+     * retry — re-running a Replace — is far worse than an untagged sequence
+     * they can tag in a click.
+     */
+    /*
+     * Re-read what EmailBison actually created. It does not return the ids it
+     * minted, and everything below needs them: renumbering, our own cache, and
+     * the copy tags.
+     */
+    let tagsCopied = 0;
+    if (payload.length) {
+      try {
+        const written = await eb.getCampaignSequenceSteps(targetId);
+        const all = (written?.data?.sequence_steps ?? []).slice();
+        const removedIds = new Set(mode === "replace" ? targetSteps.map((s) => s.id) : []);
+        const created = all
+          .filter((step) => !removedIds.has(step.id))
+          .sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+
+        /*
+         * Renumber after a Replace. The new steps were appended past the old
+         * ones, so once the originals are gone they start at
+         * targetSteps.length + 1 — the sequence would read "Step 5, Step 6"
+         * with no steps 1-4, and step order is what the whole table sorts by.
+         */
+        if (mode === "replace" && offset > 0 && written?.data?.sequence_id) {
+          try {
+            await eb.updateSequenceSteps(
+              written.data.sequence_id,
+              target?.name ?? "Sequence",
+              /*
+               * Renumber the SEQUENCE steps only. A variant is an alternative
+               * wording of a step, not a position in the sequence — EmailBison
+               * stores its order as null. Numbering it alongside the others
+               * gave a variant order=2 next to a real step 2 and shifted the
+               * rest, so variants keep whatever order they arrived with.
+               */
+              (() => {
+                let position = 0;
+                return created.map((step) => ({
+                  id: step.id,
+                  order: step.variant ? step.order : ++position,
+                }));
+              })(),
+            );
+          } catch {
+            // Cosmetic only — the steps exist in the right relative order.
+          }
+        }
+
+        /*
+         * Cache the new steps BEFORE tagging them. copy_tags.sequence_step_id
+         * is a foreign key into sequence_steps, and the ids EmailBison just
+         * minted are not in our cache until sync-steps runs — so writing tags
+         * first violates the constraint. The first version did exactly that,
+         * and because the Supabase client RETURNS errors rather than throwing,
+         * it cheerfully reported "2 tags copied" while writing none.
+         *
+         * It also makes the copied sequence visible immediately rather than
+         * after the next sweep.
+         */
+        const stepRows = created.map((step, index) => ({
+          id: step.id,
+          campaign_id: targetId,
+          team_id: teamId,
+          sequence_id: written?.data?.sequence_id ?? null,
+          step_order: Number(step.order) || null,
+          email_subject: step.email_subject ?? null,
+          email_body: step.email_body ?? null,
+          wait_in_days: Number(step.wait_in_days) || null,
+          is_variant: Boolean(step.variant),
+          variant_from_step_id: step.variant_from_step_id ?? null,
+          thread_reply: Boolean(step.thread_reply),
+          attachments: step.attachments ?? [],
+          synced_at: new Date().toISOString(),
+        }));
+
+        if (stepRows.length) {
+          const { error: cacheError } = await sb
+            .from("sequence_steps")
+            .upsert(stepRows, { onConflict: "id" });
+          if (cacheError) throw new Error(cacheError.message);
+        }
+
+        if (mode === "replace" && targetSteps.length) {
+          // The originals are gone from EmailBison; drop them here too, or the
+          // table shows the replaced sequence alongside the new one.
+          await sb.from("sequence_steps").delete().in("id", targetSteps.map((s) => s.id));
+        }
+
+        if (options.includeCopyTags) {
+          const { data: sourceTags } = await sb
+            .from("copy_tags")
+            .select("sequence_step_id, dimension, value, source")
+            .in("sequence_step_id", selected.map((s) => s.id));
+
+          const byStep = new Map<number, Array<{ dimension: string; value: string; source: string }>>();
+          for (const tag of sourceTags ?? []) {
+            const list = byStep.get(tag.sequence_step_id) ?? [];
+            list.push({ dimension: tag.dimension, value: tag.value, source: tag.source });
+            byStep.set(tag.sequence_step_id, list);
+          }
+
+          // Matched by POSITION: a subject repeats across steps here (every
+          // follow-up inherits the opener's) while position is unique.
+          const rows: Record<string, unknown>[] = [];
+          selected.forEach((sourceStep, index) => {
+            const targetStep = created[index];
+            if (!targetStep) return;
+            for (const tag of byStep.get(sourceStep.id) ?? []) {
+              rows.push({
+                sequence_step_id: targetStep.id,
+                team_id: teamId,
+                dimension: tag.dimension,
+                value: tag.value,
+                // Kept as the source's provenance, so a suggestion stays
+                // visibly a suggestion rather than becoming a confirmed choice.
+                source: tag.source,
+                updated_at: new Date().toISOString(),
+              });
+            }
+          });
+
+          if (rows.length) {
+            const { error: tagError } = await sb
+              .from("copy_tags")
+              .upsert(rows, { onConflict: "sequence_step_id,dimension" });
+            // Only count what actually landed.
+            if (tagError) throw new Error(tagError.message);
+            tagsCopied = rows.length;
+          }
+        }
+      } catch {
+        // The sequence is live on EmailBison by this point. An untagged or
+        // not-yet-cached copy is recoverable in a click; failing the whole
+        // operation would invite a retry that replaces the sequence again.
+      }
+    }
+
     if (snapshot?.id) {
       await sb
         .from("campaign_audit_log")
@@ -345,7 +525,7 @@ export async function applyCopy(
         .eq("id", snapshot.id);
     }
 
-    return { ok: true, created: payload.length, deleted };
+    return { ok: true, created: payload.length, deleted, tagsCopied };
   } catch (error) {
     const message = describeEmailBisonError(error);
     // Deleted something and then failed to create → the target has no sequence.

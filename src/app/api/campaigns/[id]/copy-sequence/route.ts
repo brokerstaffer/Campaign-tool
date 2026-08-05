@@ -25,6 +25,10 @@ const Body = z.object({
   sourceCampaignId: z.number().int().positive(),
   mode: z.enum(["replace", "append"]),
   includeVariants: z.boolean().default(true),
+  // §9.4 lists copy tags alongside variants and attachments. Defaults on: a
+  // sequence copied without its dimensions drops out of the Copy & Offer
+  // analysis, which is the analysis that identified it as worth copying.
+  includeCopyTags: z.boolean().default(true),
   includeAttachments: z.boolean().default(true),
   apply: z.boolean().default(false),
 });
@@ -56,7 +60,8 @@ export async function POST(
     );
   }
 
-  const { sourceCampaignId, mode, includeVariants, includeAttachments, apply } = parsed.data;
+  const { sourceCampaignId, mode, includeVariants, includeAttachments, includeCopyTags, apply } =
+    parsed.data;
 
   if (sourceCampaignId === targetId) {
     return NextResponse.json(
@@ -66,7 +71,7 @@ export async function POST(
   }
 
   const teamId = TEAM_ID();
-  const options = { includeVariants, includeAttachments };
+  const options = { includeVariants, includeAttachments, includeCopyTags };
 
   try {
     if (!apply) {

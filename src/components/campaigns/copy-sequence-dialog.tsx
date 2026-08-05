@@ -73,6 +73,12 @@ export function CopySequenceDialog({
   const [mode, setMode] = useState<Mode>("append");
   const [includeVariants, setIncludeVariants] = useState(true);
   const [includeAttachments, setIncludeAttachments] = useState(true);
+  /*
+   * §9.4 lists copy tags alongside variants and attachments. Defaults on: a
+   * sequence copied without its dimensions shows as Untagged in Copy & Offer —
+   * dropping out of the analysis that identified it as worth copying.
+   */
+  const [includeCopyTags, setIncludeCopyTags] = useState(true);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [typed, setTyped] = useState("");
 
@@ -103,6 +109,7 @@ export function CopySequenceDialog({
           mode,
           includeVariants,
           includeAttachments,
+          includeCopyTags,
           apply: false,
         }),
       });
@@ -126,6 +133,7 @@ export function CopySequenceDialog({
           mode,
           includeVariants,
           includeAttachments,
+          includeCopyTags,
           apply: true,
         }),
       });
@@ -275,6 +283,7 @@ export function CopySequenceDialog({
                 [
                   [includeVariants, setIncludeVariants, "Bring variants"],
                   [includeAttachments, setIncludeAttachments, "Bring attachments"],
+                  [includeCopyTags, setIncludeCopyTags, "Bring copy tags"],
                 ] as const
               ).map(([value, set, label]) => (
                 <label key={label} className="flex cursor-pointer items-center gap-2.5">
