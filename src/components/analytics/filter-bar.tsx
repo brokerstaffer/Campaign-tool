@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -29,8 +30,20 @@ const PLATFORM_OPTIONS: Option[] = PLATFORMS.map((value) => ({
   label: PLATFORM_LABEL[value],
 }));
 
+/*
+ * Labels match `reply_dimensions` exactly, and that is not cosmetic.
+ *
+ * This said "Brokerage" for `company`, while the breakdown cards on the same
+ * screen show BOTH "Brokerage (client)" (the client the campaign belongs to)
+ * and "Current brokerage" (`company` — where the person works today). So the
+ * filter named after one card actually filtered the other.
+ *
+ * Only these three of the six dimensions are filterable from the bar; the rest
+ * are reachable by clicking a row on their breakdown card, which drills the
+ * reply list by that value.
+ */
 const REPLY_FACETS = [
-  { key: "company", label: "Brokerage" },
+  { key: "company", label: "Current brokerage" },
   { key: "location", label: "Location" },
   { key: "sales_volume", label: "Sales volume" },
 ] as const;
@@ -69,6 +82,20 @@ function ReplyFacetFilters() {
 
 export function FilterBar() {
   const { filters, setFilters } = useAnalyticsFilters();
+  const pathname = usePathname();
+
+  /*
+   * The bar is shared chrome, but the four tabs do not all consume it.
+   *
+   * Infrastructure reads none of it — every number there is a lifetime sender
+   * total, scoped by team and nothing else — so it gets no bar at all rather
+   * than five controls that change nothing. And `Compare previous` only ever
+   * draws something on the Campaign tab (the KPI deltas and the chart's
+   * overlay); on Attribution and Copy & Offer it was a checkbox with no effect,
+   * which reads as a broken feature rather than an absent one.
+   */
+  const tab = pathname?.split("/")[2] ?? "campaign";
+  const supportsCompare = tab === "campaign";
 
   const { data: options } = useQuery<{ campaigns: Option[]; clients: Option[] }>({
     queryKey: ["filter-options"],
@@ -83,6 +110,10 @@ export function FilterBar() {
   const compare = filters.compare
     ? comparePeriod(filters.from, filters.to)
     : null;
+
+  // After the hooks, never before — an early return above them would change the
+  // hook order between tabs.
+  if (tab === "infrastructure") return null;
 
   return (
     <div className="flex h-11 shrink-0 items-center gap-3 overflow-x-auto border-b px-4">
@@ -164,24 +195,28 @@ export function FilterBar() {
         </span>
       ) : null}
 
-      <Separator orientation="vertical" className="h-4" />
+      {supportsCompare ? (
+        <>
+          <Separator orientation="vertical" className="h-4" />
 
-      <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-        <Checkbox
-          checked={filters.compare}
-          onCheckedChange={(checked) => setFilters({ compare: checked === true })}
-          className="size-3.5"
-        />
-        Compare previous
-      </label>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+            <Checkbox
+              checked={filters.compare}
+              onCheckedChange={(checked) => setFilters({ compare: checked === true })}
+              className="size-3.5"
+            />
+            Compare previous
+          </label>
 
-      {/* The comparison period is spelled out rather than left implicit —
-          "vs the previous period" is exactly the kind of label that gets read
-          three different ways by three different people. */}
-      {compare ? (
-        <span className="text-xs text-muted-foreground/70">
-          vs {rangeLabel(compare.from, compare.to)}
-        </span>
+          {/* The comparison period is spelled out rather than left implicit —
+              "vs the previous period" is exactly the kind of label that gets read
+              three different ways by three different people. */}
+          {compare ? (
+            <span className="text-xs text-muted-foreground/70">
+              vs {rangeLabel(compare.from, compare.to)}
+            </span>
+          ) : null}
+        </>
       ) : null}
     </div>
   );

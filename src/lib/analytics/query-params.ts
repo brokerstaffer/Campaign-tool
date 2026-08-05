@@ -108,6 +108,29 @@ function csvOf<T>(parse: (raw: string) => T, what: string) {
     });
 }
 
+/**
+ * Repeated param → deduped array of raw strings. `?k=a&k=b` → `["a","b"]`.
+ *
+ * NOT comma-split, and that is the whole point. The reply facets carry values
+ * straight from lead data, and every Location value is of the form
+ * "Charlotte, NC" — so `csvOf` tore each one into "Charlotte" and "NC", neither
+ * of which matches anything, and the Location filter returned zero replies for
+ * every value it itself offered. Ids, uuids, platforms and series keys cannot
+ * contain a comma, so they keep the shorter CSV encoding.
+ *
+ * A bare string is still accepted so a hand-edited single-value URL works.
+ */
+function listOf() {
+  return z
+    .union([z.string(), z.array(z.string())])
+    .optional()
+    .transform((value): string[] => {
+      if (value == null) return [];
+      const items = Array.isArray(value) ? value : [value];
+      return [...new Set(items.map((s) => s.trim()).filter(Boolean))];
+    });
+}
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -154,9 +177,9 @@ export const filtersSchema = z.object({
    * IS the data — brokerage names and cities come from leads and change without
    * a deploy, which is the same reason reply_dimensions is a table.
    */
-  reply_company: csvOf((v) => v, "company"),
-  reply_location: csvOf((v) => v, "location"),
-  reply_sales_volume: csvOf((v) => v, "sales volume"),
+  reply_company: listOf(),
+  reply_location: listOf(),
+  reply_sales_volume: listOf(),
   compare: boolish,
   // Charts-only. Parsed here so the routes share one validator.
   view: z.enum(SUB_VIEWS).optional(),
@@ -192,14 +215,27 @@ export interface ResolvedFilters {
  * uses. `today` is injected rather than read from the clock so this is pure and
  * testable, and so the server can resolve "today" in the team's timezone.
  */
+/** Params carried as `?k=a&k=b` rather than `?k=a,b` — see `listOf`. */
+const REPEATED_KEYS = ["reply_company", "reply_location", "reply_sales_volume"] as const;
+
 export function resolveFilters(
   params: URLSearchParams | Record<string, string | undefined>,
   today: string,
 ): ResolvedFilters {
-  const raw =
+  /*
+   * `Object.fromEntries` keeps only the LAST value of a repeated param, so the
+   * facet keys are collected with getAll() before the collapse. Everything else
+   * is single-valued or comma-joined and is unaffected.
+   */
+  const raw: Record<string, unknown> =
     params instanceof URLSearchParams
-      ? Object.fromEntries(params.entries())
-      : params;
+      ? {
+          ...Object.fromEntries(params.entries()),
+          ...Object.fromEntries(
+            REPEATED_KEYS.filter((k) => params.has(k)).map((k) => [k, params.getAll(k)]),
+          ),
+        }
+      : (params as Record<string, unknown>);
 
   const parsed = filtersSchema.parse(raw);
 
@@ -287,8 +323,9 @@ export function filtersToSearchParams(
   setList("campaign_ids", filters.campaignIds);
   setList("client_ids", filters.clientIds);
   setList("platforms", filters.platforms);
+  // Appended one by one, not comma-joined: a facet value may contain a comma.
   for (const [key, values] of Object.entries(filters.replyFacets ?? {})) {
-    setList(`reply_${key}`, values);
+    for (const value of values ?? []) params.append(`reply_${key}`, value);
   }
   if (filters.compare) params.set("compare", "1");
   if (filters.view && filters.view !== "charts") params.set("view", filters.view);

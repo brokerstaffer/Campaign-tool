@@ -152,3 +152,27 @@ describe("round-trip", () => {
     assert.equal(params.has("utm_source"), false);
   });
 });
+
+test("a reply facet value containing a comma survives the round trip", () => {
+  // Every Location value is "City, ST". Comma-splitting turned "Charlotte, NC"
+  // into two values that match nothing, so the filter returned zero replies for
+  // a value the dropdown had just offered.
+  const params = new URLSearchParams();
+  params.append("reply_location", "Charlotte, NC");
+  params.append("reply_location", "Beverly Hills, CA");
+  const f = resolveFilters(params, "2026-08-05");
+  assert.deepEqual(f.replyFacets.location, ["Charlotte, NC", "Beverly Hills, CA"]);
+});
+
+test("reply facets serialise as repeated params, not a comma list", () => {
+  const query = filtersToSearchParams({
+    replyFacets: { location: ["Charlotte, NC", "Miami, FL"] },
+  });
+  const back = resolveFilters(new URLSearchParams(query.toString()), "2026-08-05");
+  assert.deepEqual(back.replyFacets.location, ["Charlotte, NC", "Miami, FL"]);
+});
+
+test("ids stay comma-joined — they can never contain a comma", () => {
+  const f = resolveFilters(new URLSearchParams("campaign_ids=1,2,3"), "2026-08-05");
+  assert.deepEqual(f.campaignIds, [1, 2, 3]);
+});

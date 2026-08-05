@@ -27,7 +27,9 @@ export interface Point {
 
 interface Props {
   points: Point[];
-  compare?: Point[];
+  /* May contain nulls: tail-aligned to `points`, so a shorter previous
+     period leaves a gap at the oldest edge rather than dropping the newest. */
+  compare?: Array<Point | null>;
   selected: SeriesKey[];
   mode: "volume" | "rates";
   normalize: boolean;
@@ -82,7 +84,7 @@ export function SeriesChart({
       );
     }
 
-    const value = (p: Point | undefined, key: SeriesKey) => {
+    const value = (p: Point | null | undefined, key: SeriesKey) => {
       if (!p) return null;
       const raw = mode === "rates" ? toRate(p, key) : Number(p[key as keyof Point] ?? 0);
       if (raw === null) return null;

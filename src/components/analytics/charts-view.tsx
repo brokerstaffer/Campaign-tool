@@ -10,7 +10,9 @@ import { SeriesChart, type Point } from "./series-chart";
 
 interface Response {
   points: Point[];
-  compare?: Point[];
+  /* May contain nulls: tail-aligned to `points`, so a shorter previous
+     period leaves a gap at the oldest edge rather than dropping the newest. */
+  compare?: Array<Point | null>;
   compareLabel?: { from: string; to: string };
 }
 

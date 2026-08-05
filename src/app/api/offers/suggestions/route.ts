@@ -31,6 +31,8 @@ export async function GET(request: NextRequest) {
     p_team_id: Number(process.env.EMAILBISON_TEAM_ID || 2),
     p_from: filters.from,
     p_to: filters.to,
+    p_campaign_ids: filters.campaignIds.length ? filters.campaignIds : null,
+    p_client_ids: filters.clientIds.length ? filters.clientIds : null,
   });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
