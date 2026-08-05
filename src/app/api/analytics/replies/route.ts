@@ -79,6 +79,13 @@ export async function GET(request: NextRequest) {
           p_campaign_ids: campaignIds,
           p_positive_only: positiveOnly,
           p_limit: 12,
+          // Empty array -> null, because "no filter" and "match nothing" are
+          // different and an absent filter must not blank the page.
+          p_company: filters.replyFacets.company?.length ? filters.replyFacets.company : null,
+          p_location: filters.replyFacets.location?.length ? filters.replyFacets.location : null,
+          p_sales_volume: filters.replyFacets.sales_volume?.length
+            ? filters.replyFacets.sales_volume
+            : null,
         });
         if (error) throw new Error(`${d.key}: ${error.message}`);
 

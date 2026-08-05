@@ -66,6 +66,11 @@ export async function GET(request: NextRequest) {
       p_search: params.get("q")?.trim() || null,
       p_limit: PAGE_SIZE,
       p_offset: (page - 1) * PAGE_SIZE,
+      p_company: filters.replyFacets.company?.length ? filters.replyFacets.company : null,
+      p_location: filters.replyFacets.location?.length ? filters.replyFacets.location : null,
+      p_sales_volume: filters.replyFacets.sales_volume?.length
+        ? filters.replyFacets.sales_volume
+        : null,
     });
     if (error) throw new Error(error.message);
 

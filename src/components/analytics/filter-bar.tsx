@@ -29,6 +29,44 @@ const PLATFORM_OPTIONS: Option[] = PLATFORMS.map((value) => ({
   label: PLATFORM_LABEL[value],
 }));
 
+const REPLY_FACETS = [
+  { key: "company", label: "Brokerage" },
+  { key: "location", label: "Location" },
+  { key: "sales_volume", label: "Sales volume" },
+] as const;
+
+function ReplyFacetFilters() {
+  const { filters, setFilters } = useAnalyticsFilters();
+
+  const { data } = useQuery<{ facets: Record<string, Option[]> }>({
+    queryKey: ["reply-facets", filters.from, filters.to],
+    queryFn: async () => {
+      const params = new URLSearchParams({ from: filters.from, to: filters.to, preset: "custom" });
+      const response = await fetch(`/api/analytics/replies/facets?${params}`);
+      if (!response.ok) throw new Error("Failed to load reply filters");
+      return response.json();
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  return (
+    <>
+      {REPLY_FACETS.map(({ key, label }) => (
+        <MultiSelect
+          key={key}
+          label={label}
+          options={data?.facets?.[key] ?? []}
+          selected={filters.replyFacets[key] ?? []}
+          onChange={(values) =>
+            setFilters({ replyFacets: { ...filters.replyFacets, [key]: values } })
+          }
+          emptyText={`No ${label.toLowerCase()} values`}
+        />
+      ))}
+    </>
+  );
+}
+
 export function FilterBar() {
   const { filters, setFilters } = useAnalyticsFilters();
 
@@ -88,6 +126,14 @@ export function FilterBar() {
         }
         emptyText="No platforms"
       />
+
+      {/*
+        Reply attribute filters (REQ page 2), shown only on the Replies view.
+        They describe the PERSON who replied, so on Charts or Campaigns — where
+        a row is a day or a campaign — they would be controls that silently do
+        nothing. Their values come from the data, capped at the 50 most common.
+      */}
+      {filters.view === "replies" ? <ReplyFacetFilters /> : null}
 
       {filters.platforms.length ? (
         <span className="flex shrink-0 items-center gap-1">

@@ -148,6 +148,15 @@ export const filtersSchema = z.object({
   campaign_ids: csvOf(parseId, "campaign id"),
   client_ids: csvOf(parseUuid, "client id"),
   platforms: csvOf(parsePlatform, "platform"),
+  /*
+   * Reply attribute filters (REQ page 2). One param per dimension, values
+   * comma-separated. Kept free-text rather than an enum because the vocabulary
+   * IS the data — brokerage names and cities come from leads and change without
+   * a deploy, which is the same reason reply_dimensions is a table.
+   */
+  reply_company: csvOf((v) => v, "company"),
+  reply_location: csvOf((v) => v, "location"),
+  reply_sales_volume: csvOf((v) => v, "sales volume"),
   compare: boolish,
   // Charts-only. Parsed here so the routes share one validator.
   view: z.enum(SUB_VIEWS).optional(),
@@ -165,6 +174,8 @@ export interface ResolvedFilters {
   clientIds: string[];
   /** Empty = every platform, which is what an absent filter means. */
   platforms: Platform[];
+  /** Reply attribute filters, keyed by reply_dimensions.key. */
+  replyFacets: Record<string, string[]>;
   compare: boolean;
   /** Present only when `compare` is on. */
   compareFrom?: string;
@@ -217,6 +228,11 @@ export function resolveFilters(
     campaignIds: parsed.campaign_ids,
     clientIds: parsed.client_ids,
     platforms: parsed.platforms,
+    replyFacets: {
+      company: parsed.reply_company,
+      location: parsed.reply_location,
+      sales_volume: parsed.reply_sales_volume,
+    },
     compare: parsed.compare,
     view: parsed.view ?? "charts",
     series: parsed.series.length ? parsed.series : DEFAULT_SERIES,
@@ -271,6 +287,9 @@ export function filtersToSearchParams(
   setList("campaign_ids", filters.campaignIds);
   setList("client_ids", filters.clientIds);
   setList("platforms", filters.platforms);
+  for (const [key, values] of Object.entries(filters.replyFacets ?? {})) {
+    setList(`reply_${key}`, values);
+  }
   if (filters.compare) params.set("compare", "1");
   if (filters.view && filters.view !== "charts") params.set("view", filters.view);
 
