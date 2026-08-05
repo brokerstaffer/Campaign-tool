@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
   let query = sb
     .from("campaigns")
     .select(
-      "id, name, status, type, tags, total_leads, lifetime_emails_sent, max_emails_per_day, eb_created_at, eb_updated_at",
+      "id, name, status, type, tags, total_leads, lifetime_emails_sent, lifetime_unique_replies, completion_percentage, max_emails_per_day, eb_created_at, eb_updated_at",
       { count: "estimated" },
     )
     .eq("team_id", teamId)

@@ -19,7 +19,7 @@ import { BulkDeployPanel, useBulkDeploy } from "@/components/analytics/bulk-depl
 import {
   COPY_DIMENSIONS, awardMedals, dimensionLabel, MEDAL_MIN_SENT,
 } from "@/lib/analytics/copy-dimensions.ts";
-import { compactNumber, fullNumber, percent } from "@/lib/analytics/format.ts";
+import { compactNumber, fullNumber, percent, rangeLabel } from "@/lib/analytics/format.ts";
 import { cn } from "@/lib/utils";
 
 /*
@@ -124,7 +124,7 @@ interface CopyResponse {
 export function CopyOfferView() {
   // The same shared filter contract every analytics tab reads, so the date
   // range and client selection above apply here without a second parser.
-  const { toQueryString } = useAnalyticsFilters();
+  const { filters, toQueryString } = useAnalyticsFilters();
   const queryClient = useQueryClient();
 
   const [dimensions, setDimensions] = useState<string[]>(["subject_line"]);
@@ -377,8 +377,16 @@ export function CopyOfferView() {
 
         {/* ---- Copy dimensions ---- */}
         <section>
-          <div className="mb-1">
+          <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <h2 className="text-base font-semibold tracking-tight">How the copy performs</h2>
+            {/*
+              §6.1: "The current period and sort are always spelled out above
+              the table." Without it a reader has no way to know whether they
+              are looking at 7 days or 90, and the ordering looks arbitrary.
+            */}
+            <p className="tnum text-xs text-muted-foreground">
+              {rangeLabel(filters.from, filters.to)} · sorted by positive&nbsp;%
+            </p>
             {/*
               * "Question 2.68%" is meaningless without saying what is being
               * compared. This line names the unit (an opening email), the
@@ -390,7 +398,6 @@ export function CopyOfferView() {
               Open a row to see the actual emails in it.
             </p>
           </div>
-
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="text-sm font-medium">Dimension:</span>
 
@@ -659,8 +666,8 @@ export function CopyOfferView() {
             <strong className="font-medium text-foreground">First email only.</strong> Follow-ups
             are excluded: EmailBison inherits their subject from the step above, so counting them
             would count the same subject two or three times, and their replies belong to the
-            opener that preceded them. Variants of the first email are included. Sorted by volume;
-            medals mark the best positive rate among values with at least{" "}
+            opener that preceded them. Variants of the first email are included. Medals mark
+            the best positive rate among values with at least{" "}
             {fullNumber(MEDAL_MIN_SENT)} sends, because without a floor the smallest sample wins
             every time.
           </p>

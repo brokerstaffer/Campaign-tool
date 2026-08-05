@@ -32,7 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { SyncButton } from "@/components/analytics/sync-button";
-import { fullNumber } from "@/lib/analytics/format.ts";
+import { DASH, fullNumber, percent } from "@/lib/analytics/format.ts";
 import {
   CAMPAIGN_STATUSES,
   STATUS_TONE,
@@ -57,6 +57,14 @@ interface Campaign {
   name: string;
   status: string;
   tags: unknown[];
+  /*
+   * Lifetime figures, as §11 asks the carried-over table to show. Labelled
+   * lifetime in the header because they are NOT date-filtered — this screen has
+   * no range picker, and a reply rate that silently meant "all time" while
+   * looking like "this month" is the kind of number people quote in meetings.
+   */
+  lifetime_unique_replies: number | null;
+  completion_percentage: number | null;
   total_leads: number | null;
   lifetime_emails_sent: number | null;
   max_emails_per_day: number | null;
@@ -108,6 +116,34 @@ function relativeTime(iso: string | null): string {
   if (hours < 24) return `about ${hours}h ago`;
   const days = Math.round(hours / 24);
   return days < 30 ? `${days}d ago` : `${Math.round(days / 30)}mo ago`;
+}
+
+/**
+ * How far through its leads a campaign is.
+ *
+ * A bar plus the number, because a bar alone cannot tell 97% from 100% at this
+ * width — and "nearly finished" versus "finished" is the difference between
+ * leaving it alone and queueing more leads. Renders a dash when EmailBison has
+ * not reported a percentage rather than an empty track, which would read as 0%.
+ */
+function ProgressBar({ value }: { value: number | null }) {
+  if (value === null || !Number.isFinite(value)) {
+    return <span className="text-xs text-muted-foreground">{DASH}</span>;
+  }
+  const pct = Math.max(0, Math.min(100, value));
+  return (
+    <span className="flex items-center gap-1.5" title={`${pct.toFixed(1)}% complete`}>
+      <span className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+        <span
+          className={cn("block h-full rounded-full", pct >= 99 ? "bg-muted-foreground" : "bg-foreground")}
+          style={{ width: `${pct}%` }}
+        />
+      </span>
+      <span className="tnum w-8 shrink-0 text-right text-[10px] text-muted-foreground">
+        {Math.round(pct)}%
+      </span>
+    </span>
+  );
 }
 
 function StatusChip({ status }: { status: string }) {
@@ -385,7 +421,9 @@ export function CampaignsPage() {
                 <th className="px-2 py-2 font-medium">Client</th>
                 <th className="px-2 py-2 font-medium">Status</th>
                 <th className="px-2 py-2 text-right font-medium">Sent</th>
+                <th className="px-2 py-2 text-right font-medium">Replies</th>
                 <th className="px-2 py-2 text-right font-medium">Leads</th>
+                <th className="w-28 px-2 py-2 font-medium">Progress</th>
                 <th className="px-2 py-2 font-medium">Updated</th>
                 <th className="w-9 px-2 py-2" />
               </tr>
@@ -435,8 +473,27 @@ export function CampaignsPage() {
                   <td className="tnum px-2 py-2 text-right text-xs">
                     {fullNumber(campaign.lifetime_emails_sent)}
                   </td>
+                  {/*
+                    Replies with the rate beside it (§11). The rate is the point:
+                    289 replies means nothing until you know whether that came
+                    from 18,000 sends or 1,000.
+                  */}
+                  <td className="tnum px-2 py-2 text-right text-xs">
+                    {fullNumber(campaign.lifetime_unique_replies)}
+                    {campaign.lifetime_emails_sent && campaign.lifetime_unique_replies ? (
+                      <span className="ml-1.5 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+                        {percent(
+                          campaign.lifetime_unique_replies / campaign.lifetime_emails_sent,
+                          2,
+                        )}
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="tnum px-2 py-2 text-right text-xs text-muted-foreground">
                     {fullNumber(campaign.total_leads)}
+                  </td>
+                  <td className="px-2 py-2">
+                    <ProgressBar value={campaign.completion_percentage} />
                   </td>
                   <td className="px-2 py-2 text-xs text-muted-foreground">
                     {relativeTime(campaign.eb_updated_at)}

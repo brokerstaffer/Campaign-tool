@@ -177,7 +177,32 @@ export async function GET(request: NextRequest) {
       positive_rate: b.replies > 0 ? b.positive / b.replies : null,
       bounce_rate: b.sent > 0 ? b.bounced / b.sent : null,
     }))
-    .sort((a, b) => b.sent - a.sent);
+    /*
+     * §6.1: "Sorted by Positive % by default — the column that matters most."
+     *
+     * It sorted by volume, which put the medal winner in third place: Direct
+     * takes gold at 5.26% while Question sat on top with twice the sends and
+     * 2.08%. The whole point of the table is which copy WORKS, not which was
+     * sent most.
+     *
+     * Rows with no positive rate yet sink rather than float: a null is "not
+     * enough replies to say", and sorting it above a measured 5% would put the
+     * least-known value in the position that reads as best. Volume breaks ties,
+     * so equal rates still order sensibly.
+     */
+    .sort((a, b) => {
+      /*
+       * Untagged always sinks, whatever its rate. It is a gap in the data, not
+       * a way of writing — the same reason it cannot win a medal. Sorting by
+       * rate alone put it top of the table at 25% off four replies, which is
+       * the "smallest sample wins" failure the medal floor exists to prevent,
+       * except in the position that reads as the answer.
+       */
+      if (a.untagged !== b.untagged) return a.untagged ? 1 : -1;
+      const ar = a.positive_rate ?? -1;
+      const br = b.positive_rate ?? -1;
+      return br === ar ? b.sent - a.sent : br - ar;
+    });
 
   const taggedSent = steps
     .filter((s) => dimensions.every((d) => s.tags?.[d]))
