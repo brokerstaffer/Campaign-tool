@@ -386,6 +386,53 @@ function CopyAndOffer({ campaignId, steps }: { campaignId: number; steps: Step[]
   );
 }
 
+/** One variant of a step: subject, its numbers, and its actual email. */
+function VariantRow({
+  variant,
+  index,
+}: {
+  variant: Omit<Step, "variants">;
+  index: number;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="overflow-hidden rounded-md border bg-muted/30">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-start gap-2 p-2.5 text-left hover:bg-muted/50"
+      >
+        <ChevronRight
+          className={cn(
+            "mt-0.5 size-3 shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-90",
+          )}
+        />
+        <span className="tnum shrink-0 rounded bg-background px-1.5 text-[11px]">
+          {String.fromCharCode(65 + index)}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-xs">
+            {variant.email_subject || (
+              <em className="text-muted-foreground">No subject</em>
+            )}
+          </span>
+          <span className="mt-1 block">
+            <StepStatsRow stats={variant.stats} />
+          </span>
+        </span>
+      </button>
+
+      {open ? (
+        <div className="border-t bg-background p-2.5">
+          <EmailPanel subject={variant.email_subject} body={variant.email_body} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function StatusChip({ status }: { status: string }) {
   const tone = isKnownStatus(status) ? STATUS_TONE[status] : "bg-red-100 text-red-800";
   return (
@@ -715,24 +762,14 @@ function Sequence({
                   <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                     Variants
                   </p>
+                  {/*
+                    Openable, like a step. A variant showed its subject and its
+                    numbers with no way to read the email — which is the one
+                    thing you need in order to judge why it is winning or
+                    losing against the step it replaces.
+                  */}
                   {step.variants.map((variant, vi) => (
-                    <div key={variant.id} className="rounded-md border bg-muted/30 p-2.5">
-                      <div className="flex items-start gap-2">
-                        <span className="tnum shrink-0 rounded bg-background px-1.5 text-[11px]">
-                          {String.fromCharCode(65 + vi)}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs">
-                            {variant.email_subject || (
-                              <em className="text-muted-foreground">No subject</em>
-                            )}
-                          </p>
-                          <div className="mt-1">
-                            <StepStatsRow stats={variant.stats} />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    <VariantRow key={variant.id} variant={variant} index={vi} />
                   ))}
                 </div>
               ) : null}

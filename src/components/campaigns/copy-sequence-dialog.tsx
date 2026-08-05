@@ -335,18 +335,38 @@ export function CopySequenceDialog({
 
             <div>
               <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                Will be created ({plan.steps.length})
+                Will be created ({plan.steps.filter((s) => !s.isVariant).length} step
+                {plan.steps.filter((s) => !s.isVariant).length === 1 ? "" : "s"}
+                {plan.steps.some((s) => s.isVariant)
+                  ? ` · ${plan.steps.filter((s) => s.isVariant).length} variant${
+                      plan.steps.filter((s) => s.isVariant).length === 1 ? "" : "s"
+                    }`
+                  : ""}
+                )
               </p>
               <ul className="max-h-52 space-y-1.5 overflow-y-auto rounded-md border p-2 text-xs">
                 {plan.steps.map((step, i) => (
                   <li key={i}>
                     <span className="flex items-baseline gap-2">
-                      <span className="tnum shrink-0 text-muted-foreground">{step.order}.</span>
+                      {/* A variant has no position of its own — it replaces the
+                          step above it — so numbering it would imply an extra
+                          email that never gets sent. */}
+                      <span className="tnum shrink-0 text-muted-foreground">
+                        {step.isVariant ? "↳" : `${step.order}.`}
+                      </span>
                       <span className="min-w-0 flex-1 truncate">
                         {step.subject || "(no subject)"}
                       </span>
+                      {/* wait_in_days is the gap AFTER a step (EmailBison:
+                          "how many days before the sequence moves to the next
+                          step"), so the last step's is inert and a variant has
+                          none of its own. */}
                       <span className="tnum shrink-0 text-muted-foreground">
-                        {step.waitInDays ? `${step.waitInDays}d` : "immediate"}
+                        {step.isVariant
+                          ? ""
+                          : step.waitInDays
+                            ? `then ${step.waitInDays}d`
+                            : ""}
                       </span>
                       {step.isVariant ? (
                         <span className="shrink-0 rounded border px-1">variant</span>

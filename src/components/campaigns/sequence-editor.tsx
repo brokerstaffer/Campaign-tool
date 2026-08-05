@@ -372,7 +372,24 @@ export function SequenceEditor({
                 <GripVertical className="size-3.5" />
               </span>
 
-              <span className="tnum shrink-0 rounded bg-muted px-1.5 text-xs">{index + 1}</span>
+              {/*
+                Numbered by POSITION IN THE SEQUENCE, not by row index. The
+                editor keeps a flat list because EmailBison's sequence is flat
+                and saving a nested shape would have to invent an ordering — but
+                numbering the rows 1..N made a variant read as "step 4" of a
+                3-step campaign, which is what the Campaigns table was fixed for
+                in 043. A variant shows which step it belongs to instead.
+              */}
+              <span
+                className={cn(
+                  "tnum shrink-0 rounded px-1.5 text-xs",
+                  step.variant ? "bg-primary/10 text-primary" : "bg-muted",
+                )}
+              >
+                {step.variant
+                  ? `variant of ${steps.filter((s, i) => !s.variant && i < index).length}`
+                  : steps.filter((s, i) => !s.variant && i <= index).length}
+              </span>
 
               <button
                 type="button"
