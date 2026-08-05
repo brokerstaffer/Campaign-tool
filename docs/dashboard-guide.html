@@ -1,0 +1,1803 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Campaign Analytics Dashboard — Complete Guide</title>
+<style>
+/* ==========================================================================
+   Tokens
+   ========================================================================== */
+:root{
+  --paper:#FBFCFD;
+  --card:#FFFFFF;
+  --ink:#141A21;
+  --ink-2:#3D4A57;
+  --ink-3:#6B7885;
+  --rule:#DDE4EA;
+  --rule-soft:#EDF1F4;
+  --accent:#1F5FA8;
+  --accent-soft:#EAF1F9;
+  --tint:#F4F7FA;
+
+  /* The product's own data colours, so a swatch here is the swatch there. */
+  --s-sent:#2A78D6;
+  --s-replies:#EB6834;
+  --s-human:#1BAF7A;
+  --s-positive:#008300;
+  --s-prospects:#4A3AA7;
+  --s-bounces:#E34948;
+
+  /* Reserved status hues. */
+  --ok:#0E7A52;
+  --warn:#A16207;
+  --crit:#B02525;
+
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua","Hoefler Text",Georgia,serif;
+  --sans:ui-sans-serif,-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --paper:#0F1418; --card:#161C22; --ink:#E7EDF2; --ink-2:#B4C0CB; --ink-3:#8695A3;
+    --rule:#2A343D; --rule-soft:#212A32; --accent:#7FB2EA; --accent-soft:#17242F; --tint:#141B21;
+    --ok:#4FC08D; --warn:#D9A441; --crit:#E4736B;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0F1418; --card:#161C22; --ink:#E7EDF2; --ink-2:#B4C0CB; --ink-3:#8695A3;
+  --rule:#2A343D; --rule-soft:#212A32; --accent:#7FB2EA; --accent-soft:#17242F; --tint:#141B21;
+  --ok:#4FC08D; --warn:#D9A441; --crit:#E4736B;
+}
+:root[data-theme="light"]{
+  --paper:#FBFCFD; --card:#FFFFFF; --ink:#141A21; --ink-2:#3D4A57; --ink-3:#6B7885;
+  --rule:#DDE4EA; --rule-soft:#EDF1F4; --accent:#1F5FA8; --accent-soft:#EAF1F9; --tint:#F4F7FA;
+  --ok:#0E7A52; --warn:#A16207; --crit:#B02525;
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--serif);
+  font-size:11.25pt;
+  line-height:1.62;
+  font-kerning:normal;
+  font-variant-numeric:oldstyle-nums proportional-nums;
+}
+.sheet{
+  max-width:196mm;
+  margin:0 auto;
+  padding:22mm 14mm 30mm;
+}
+p{margin:0 0 .85em}
+a{color:var(--accent);text-underline-offset:2px}
+strong{font-weight:600}
+em{font-style:italic}
+hr{border:0;border-top:1px solid var(--rule);margin:2.4em 0}
+
+/* ==========================================================================
+   Cover
+   ========================================================================== */
+.cover{
+  min-height:232mm;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  padding-bottom:12mm;
+  border-bottom:1px solid var(--rule);
+}
+.cover-top{display:flex;flex-direction:column;gap:3mm}
+.wordmark{
+  display:inline-flex;align-items:center;gap:9px;
+  font-family:var(--sans);font-size:8.5pt;font-weight:600;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);
+}
+.wordmark .dot{width:9px;height:9px;border-radius:2px;background:var(--s-sent);flex:none}
+.cover-mid{margin-top:auto;padding-top:26mm}
+h1.cover-title{
+  font-family:var(--serif);
+  font-size:37pt;line-height:1.06;font-weight:400;
+  letter-spacing:-.014em;margin:0 0 6mm;text-wrap:balance;
+  max-width:15ch;
+}
+.cover-rule{width:64px;height:3px;background:var(--accent);margin-bottom:6mm}
+.cover-lede{
+  font-size:13pt;line-height:1.55;color:var(--ink-2);max-width:56ch;margin:0 0 9mm;
+}
+.cover-meta{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:6mm 8mm;border-top:1px solid var(--rule);padding-top:6mm;
+  font-family:var(--sans);
+}
+.cover-meta dt{font-size:7.5pt;letter-spacing:.13em;text-transform:uppercase;color:var(--ink-3);margin-bottom:3px}
+.cover-meta dd{margin:0;font-size:10pt;color:var(--ink)}
+
+/* ==========================================================================
+   Contents
+   ========================================================================== */
+.toc{margin:14mm 0 0}
+.toc ol{list-style:none;margin:0;padding:0;counter-reset:part}
+.toc > ol > li{
+  counter-increment:part;
+  border-top:1px solid var(--rule);
+  padding:3.5mm 0 3mm;
+}
+.toc > ol > li:last-child{border-bottom:1px solid var(--rule)}
+.toc-row{display:flex;align-items:baseline;gap:10px}
+.toc-num{
+  font-family:var(--mono);font-size:9pt;color:var(--accent);
+  min-width:2.4em;font-variant-numeric:tabular-nums;
+}
+.toc-name{font-size:12.5pt;font-weight:500}
+.toc-sub{
+  font-family:var(--sans);font-size:9pt;color:var(--ink-3);
+  margin:1.5mm 0 0 calc(2.4em + 10px);line-height:1.5;
+}
+
+/* ==========================================================================
+   Structure
+   ========================================================================== */
+.part{margin-top:16mm;counter-reset:sec}
+.part-head{border-top:2.5px solid var(--ink);padding-top:4mm;margin-bottom:9mm}
+.part-eyebrow{
+  font-family:var(--mono);font-size:8.5pt;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--accent);display:block;margin-bottom:2.5mm;
+}
+h2.part-title{
+  font-size:23pt;font-weight:400;line-height:1.14;letter-spacing:-.012em;
+  margin:0 0 3mm;text-wrap:balance;
+}
+.part-lede{font-size:11.5pt;color:var(--ink-2);max-width:62ch;margin:0}
+
+.sec{margin-top:9mm}
+h3.sec-title{
+  font-family:var(--sans);
+  font-size:12.5pt;font-weight:650;letter-spacing:-.008em;
+  margin:0 0 1mm;padding-bottom:2mm;border-bottom:1px solid var(--rule);
+  text-wrap:balance;
+}
+h4.sub-title{
+  font-family:var(--sans);
+  font-size:10pt;font-weight:650;margin:6mm 0 2mm;color:var(--ink);
+}
+.sec > p:first-of-type{margin-top:3mm}
+.sec p,.sec ul.plain,.sec ol.plain{max-width:66ch}
+.answers{
+  font-family:var(--sans);font-size:9.5pt;line-height:1.55;
+  color:var(--ink-2);background:var(--tint);
+  border-left:3px solid var(--accent);
+  padding:3mm 4mm;margin:3mm 0 4mm;border-radius:0 4px 4px 0;
+}
+.answers b{color:var(--ink);font-weight:650}
+
+/* ==========================================================================
+   Tables
+   ========================================================================== */
+.table-wrap{overflow-x:auto;margin:4mm 0 5mm}
+table{
+  width:100%;border-collapse:collapse;
+  font-family:var(--sans);font-size:9.5pt;line-height:1.5;
+  font-variant-numeric:tabular-nums;
+}
+caption{
+  caption-side:top;text-align:left;
+  font-family:var(--sans);font-size:8pt;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--ink-3);padding-bottom:2mm;
+}
+th{
+  text-align:left;font-weight:650;font-size:8.5pt;
+  letter-spacing:.04em;color:var(--ink-3);text-transform:uppercase;
+  border-bottom:1.5px solid var(--ink);padding:0 8px 2mm 0;vertical-align:bottom;
+}
+td{
+  padding:2.6mm 8px 2.6mm 0;border-bottom:1px solid var(--rule-soft);
+  vertical-align:top;color:var(--ink-2);
+}
+td:first-child{color:var(--ink);font-weight:550;width:29%;padding-right:14px}
+tr:last-child td{border-bottom:1px solid var(--rule)}
+table.trio td:first-child{width:22%}
+table.trio td:nth-child(2){width:22%;color:var(--ink);font-weight:500}
+table.narrow td:first-child{width:20%}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+
+/* ==========================================================================
+   Inline devices
+   ========================================================================== */
+.ui{
+  font-family:var(--sans);font-size:.87em;font-weight:600;
+  color:var(--ink);background:var(--tint);
+  border:1px solid var(--rule);border-radius:4px;
+  padding:.08em .42em;white-space:nowrap;
+}
+.val{font-family:var(--mono);font-size:.84em;color:var(--ink);font-variant-numeric:tabular-nums}
+.swatch{
+  display:inline-block;width:.62em;height:.62em;border-radius:2px;
+  margin-right:.34em;vertical-align:baseline;flex:none;
+}
+.pill{
+  font-family:var(--sans);font-size:8pt;font-weight:650;
+  letter-spacing:.04em;padding:.12em .5em;border-radius:20px;white-space:nowrap;
+}
+.pill-ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 12%,transparent)}
+.pill-warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent)}
+.pill-crit{color:var(--crit);background:color-mix(in srgb,var(--crit) 12%,transparent)}
+
+.note{
+  font-family:var(--sans);font-size:9.5pt;line-height:1.55;
+  border:1px solid var(--rule);border-radius:6px;
+  background:var(--card);padding:3.5mm 4mm;margin:4mm 0;
+}
+.note-label{
+  display:block;font-size:7.5pt;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--accent);font-weight:700;margin-bottom:1.5mm;
+}
+.note p:last-child{margin-bottom:0}
+
+ul.plain,ol.plain{margin:0 0 1em;padding-left:1.15em}
+ul.plain li,ol.plain li{margin-bottom:.42em}
+ul.plain li::marker{color:var(--ink-3)}
+ol.plain li::marker{color:var(--accent);font-family:var(--mono);font-size:.88em}
+
+.legend{
+  display:flex;flex-wrap:wrap;gap:2mm 5mm;margin:3mm 0 4mm;
+  font-family:var(--sans);font-size:9.5pt;
+}
+.legend span{display:inline-flex;align-items:center;color:var(--ink-2)}
+
+.cards{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));
+  gap:3mm;margin:4mm 0 5mm;
+}
+.mini{
+  border:1px solid var(--rule);border-radius:6px;background:var(--card);
+  padding:3mm 3.5mm;font-family:var(--sans);
+}
+.mini h5{
+  margin:0 0 1mm;font-size:9.5pt;font-weight:650;color:var(--ink);
+  display:flex;align-items:center;gap:5px;
+}
+.mini p{margin:0;font-size:9pt;line-height:1.5;color:var(--ink-2)}
+.mini .formula{
+  display:block;font-family:var(--mono);font-size:8.5pt;color:var(--accent);
+  margin-top:1.5mm;
+}
+
+.steps{counter-reset:step;list-style:none;margin:4mm 0;padding:0}
+.steps li{
+  counter-increment:step;position:relative;
+  padding:0 0 3.5mm 10mm;font-family:var(--sans);font-size:9.5pt;line-height:1.55;color:var(--ink-2);
+}
+.steps li::before{
+  content:counter(step);position:absolute;left:0;top:-1px;
+  width:6.5mm;height:6.5mm;border-radius:50%;
+  background:var(--accent-soft);color:var(--accent);
+  font-family:var(--mono);font-size:8.5pt;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+}
+.steps li b{color:var(--ink);font-weight:650}
+
+.kicker{
+  font-family:var(--sans);font-size:8pt;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--ink-3);margin:6mm 0 2mm;font-weight:650;
+}
+
+footer.doc-foot{
+  margin-top:16mm;border-top:1px solid var(--rule);padding-top:4mm;
+  font-family:var(--sans);font-size:8.5pt;color:var(--ink-3);
+  display:flex;justify-content:space-between;gap:6mm;flex-wrap:wrap;
+}
+
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ==========================================================================
+   Print
+   ========================================================================== */
+@page{size:A4;margin:16mm 15mm 15mm}
+@media print{
+  :root{
+    --paper:#fff;--card:#fff;--ink:#101519;--ink-2:#39434E;--ink-3:#68737E;
+    --rule:#CFD8DF;--rule-soft:#E6EBEF;--accent:#12508F;--accent-soft:#EAF1F9;--tint:#F4F7FA;
+    --ok:#0B6B47;--warn:#8A5309;--crit:#9C1F1F;
+  }
+  html,body{background:#fff}
+  body{font-size:9.6pt;line-height:1.5}
+  .sheet{max-width:none;padding:0;margin:0}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+
+  .cover{min-height:0;height:242mm;page-break-after:always;border-bottom:0}
+  h1.cover-title{font-size:33pt}
+  .toc{page-break-after:always;margin-top:0}
+  .part{page-break-before:always;margin-top:0}
+  .part:first-of-type{page-break-before:auto}
+  .part-head{padding-top:0}
+  h2.part-title{font-size:19pt}
+  h3.sec-title,h4.sub-title{page-break-after:avoid}
+  .sec{page-break-inside:auto}
+  table{font-size:8.4pt}
+  th{font-size:7.4pt}
+  tr{page-break-inside:avoid}
+  thead{display:table-header-group}
+  .note,.mini,.answers,.legend{page-break-inside:avoid}
+  .cards{gap:2.5mm}
+  a{color:var(--ink);text-decoration:none}
+  footer.doc-foot{page-break-before:avoid}
+}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<!-- ====================== COVER ====================== -->
+<section class="cover">
+  <div class="cover-top">
+    <span class="wordmark"><span class="dot"></span>BrokerStaffer</span>
+  </div>
+
+  <div class="cover-mid">
+    <h1 class="cover-title">The Campaign Analytics Dashboard</h1>
+    <div class="cover-rule"></div>
+    <p class="cover-lede">
+      A complete guide to every screen, control, number and background process —
+      what each one shows, where it comes from, and how to read it.
+    </p>
+    <dl class="cover-meta">
+      <div><dt>Document</dt><dd>Complete product guide</dd></div>
+      <div><dt>Covers</dt><dd>Every screen and control</dd></div>
+      <div><dt>Audience</dt><dd>Everyone using the dashboard</dd></div>
+      <div><dt>Revised</dt><dd>6 August 2026</dd></div>
+    </dl>
+  </div>
+</section>
+
+<!-- ====================== CONTENTS ====================== -->
+<nav class="toc" aria-label="Contents">
+  <p class="kicker" style="margin-top:0">Contents</p>
+  <ol>
+    <li><div class="toc-row"><span class="toc-num">01</span><span class="toc-name">Orientation</span></div>
+      <p class="toc-sub">What the dashboard is for · Signing in · The four places you can go · How every screen is put together · Sharing what you are looking at</p></li>
+
+    <li><div class="toc-row"><span class="toc-num">02</span><span class="toc-name">The filter bar</span></div>
+      <p class="toc-sub">Quick ranges · The date picker · Campaigns · Clients · Platform · Reply attributes · Compare previous · Which tabs each control affects</p></li>
+
+    <li><div class="toc-row"><span class="toc-num">03</span><span class="toc-name">Analytics — the headline numbers</span></div>
+      <p class="toc-sub">The twelve tiles, one by one · How each is worked out · What a dash means · Comparing against the previous period</p></li>
+
+    <li><div class="toc-row"><span class="toc-num">04</span><span class="toc-name">Analytics — Charts</span></div>
+      <p class="toc-sub">The six lines · Volume and Rates · Normalise · Exclude weekends · The comparison overlay · Reading the tooltip</p></li>
+
+    <li><div class="toc-row"><span class="toc-num">05</span><span class="toc-name">Analytics — Clients</span></div>
+      <p class="toc-sub">One row per client · The Unassigned row · Totals · Why the totals always tie out</p></li>
+
+    <li><div class="toc-row"><span class="toc-num">06</span><span class="toc-name">Analytics — Campaigns</span></div>
+      <p class="toc-sub">The table and its column groups · Choosing columns · Opening a campaign down to a single email · Steps and variants · Medals</p></li>
+
+    <li><div class="toc-row"><span class="toc-num">07</span><span class="toc-name">Analytics — Replies</span></div>
+      <p class="toc-sub">Who is replying · The six breakdown cards · Drilling into one group · The reply list · Logging an outcome</p></li>
+
+    <li><div class="toc-row"><span class="toc-num">08</span><span class="toc-name">Infrastructure</span></div>
+      <p class="toc-sub">The bounce headline · The three health bands · By domain, provider or inbox · Needs attention</p></li>
+
+    <li><div class="toc-row"><span class="toc-num">09</span><span class="toc-name">Attribution</span></div>
+      <p class="toc-sub">Where outcomes come from · What it costs to earn one · The funnel · Where people stopped · Over time · By campaign · The full list</p></li>
+
+    <li><div class="toc-row"><span class="toc-num">10</span><span class="toc-name">Copy &amp; Offer</span></div>
+      <p class="toc-sub">The seven ways copy is described · How the copy performs · Offers · Reading a full sequence · Suggested groups · Rolling a sequence out</p></li>
+
+    <li><div class="toc-row"><span class="toc-num">11</span><span class="toc-name">Campaigns</span></div>
+      <p class="toc-sub">The list and its filters · Bulk actions · Overview · Sequence · Copy tags · Settings · Activity · The sequence editor</p></li>
+
+    <li><div class="toc-row"><span class="toc-num">12</span><span class="toc-name">Sending schedule</span></div>
+      <p class="toc-sub">The next three days · Per-client cards and share of day · Sync schedule</p></li>
+
+    <li><div class="toc-row"><span class="toc-num">13</span><span class="toc-name">Clients</span></div>
+      <p class="toc-sub">Why this page exists · Adding and editing · Aliases and matching · Unassigned campaigns · Excluding a campaign · Reply groupings</p></li>
+
+    <li><div class="toc-row"><span class="toc-num">14</span><span class="toc-name">Keeping the numbers fresh</span></div>
+      <p class="toc-sub">What updates and how often · The nightly deep sweeps · Sync buttons · What to do if something looks stale</p></li>
+
+    <li><div class="toc-row"><span class="toc-num">15</span><span class="toc-name">Conventions worth knowing</span></div>
+      <p class="toc-sub">The dash · Rounded versus exact numbers · Colour · Minimum sample sizes · Steps versus variants · Where each number comes from</p></li>
+  </ol>
+</nav>
+
+<!-- ====================== 01 ORIENTATION ====================== -->
+<section class="part">
+  <header class="part-head">
+    <span class="part-eyebrow">Part 01</span>
+    <h2 class="part-title">Orientation</h2>
+    <p class="part-lede">
+      What this dashboard is, how it is laid out, and the handful of ideas that
+      make every other screen easier to read.
+    </p>
+  </header>
+
+  <div class="sec">
+    <h3 class="sec-title">What it is for</h3>
+    <p>
+      Every campaign, every email, every reply and every result lives inside
+      EmailBison. That is where the sending happens, and it stays the single
+      source of truth. What it does not give you is a way to <em>ask questions</em> —
+      to slice a quarter by client, put two subject lines side by side, or see
+      how much sending it takes to earn one interview.
+    </p>
+    <p>
+      This dashboard is that layer. It reads everything out of EmailBison on a
+      schedule, arranges it by client, campaign, sequence step and individual
+      email, and lets you filter all of it by date and by whoever you are
+      reporting on. It also writes back: you can pause and resume campaigns,
+      edit a sequence, and roll a winning sequence out to other campaigns
+      without leaving the page.
+    </p>
+    <div class="answers">
+      <b>The one rule that explains the rest:</b> EmailBison is always the
+      authority on what happened. This dashboard never invents a number. When
+      something here looks different from EmailBison's own screen, the reason is
+      always a difference in <em>question</em> — a date range, or a filter, or
+      counting people rather than emails — never a difference in truth.
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Signing in</h3>
+    <p>
+      The dashboard is private. You sign in once with your email address and
+      password, and stay signed in for several days on that browser. Everyone on
+      the team has their own login rather than sharing one. Nothing is public,
+      and there is no way for anyone outside the team to reach any screen.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">The four places you can go</h3>
+    <p>
+      The narrow strip down the left is the whole navigation. Four destinations,
+      all of them live:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <caption>The sidebar</caption>
+        <thead><tr><th>Where</th><th>What it is for</th></tr></thead>
+        <tbody>
+          <tr><td>Campaigns</td><td>The operational list. Find a campaign, pause or resume it, open it to read and edit its sequence.</td></tr>
+          <tr><td>Schedule</td><td>What is going out today, tomorrow and the day after, grouped by client.</td></tr>
+          <tr><td>Analytics</td><td>The reporting area — four tabs covering performance, sending health, results, and copy.</td></tr>
+          <tr><td>Clients</td><td>Where campaigns are matched to clients. Every client-grouped number on the dashboard depends on this page.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">How the Analytics area is put together</h3>
+    <p>
+      Analytics has <strong>four tabs</strong> across the top, and underneath
+      them a <strong>filter bar</strong> that applies to whichever tab you are
+      on. The first tab, Campaign, is itself split into <strong>four
+      sub-views</strong>, chosen with the segmented control just below the
+      headline numbers.
+    </p>
+    <div class="table-wrap">
+      <table class="trio">
+        <caption>The reporting surface</caption>
+        <thead><tr><th>Tab</th><th>Sub-view</th><th>The question it answers</th></tr></thead>
+        <tbody>
+          <tr><td rowspan="4">Campaign</td><td>Charts</td><td>How did volume and response move day by day?</td></tr>
+          <tr><td>Clients</td><td>Which clients are getting results, side by side?</td></tr>
+          <tr><td>Campaigns</td><td>Which campaigns, steps and individual emails are working?</td></tr>
+          <tr><td>Replies</td><td>Who is replying — which brokerages, cities, sales bands?</td></tr>
+          <tr><td>Infrastructure</td><td>—</td><td>Is the sending estate healthy, and which domains are drifting?</td></tr>
+          <tr><td>Attribution</td><td>—</td><td>What actually came out of it — introductions, interviews, hires?</td></tr>
+          <tr><td>Copy &amp; Offer</td><td>—</td><td>Which words work, and which offers work?</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Sharing what you are looking at</h3>
+    <p>
+      Everything you set — the date range, the campaigns, the clients, the
+      chosen sub-view, even which lines are on the chart — is written into the
+      address bar. Three useful consequences:
+    </p>
+    <ul class="plain">
+      <li><strong>Any view is a link.</strong> Copy the address, paste it into a
+        message, and the person opening it sees exactly what you saw.</li>
+      <li><strong>The back button works properly.</strong> It steps back through
+        your filter changes rather than jumping out of the dashboard.</li>
+      <li><strong>Reloading keeps your place.</strong> Refreshing never resets
+        you to a default month.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ====================== 02 FILTER BAR ====================== -->
+<section class="part">
+  <header class="part-head">
+    <span class="part-eyebrow">Part 02</span>
+    <h2 class="part-title">The filter bar</h2>
+    <p class="part-lede">
+      One strip of controls, sitting above every Analytics tab. Whatever you set
+      here applies to every number, table and chart on the page below it.
+    </p>
+  </header>
+
+  <div class="sec">
+    <h3 class="sec-title">The controls, left to right</h3>
+    <div class="table-wrap">
+      <table>
+        <caption>Every control on the bar</caption>
+        <thead><tr><th>Control</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><span class="ui">7d</span> <span class="ui">30d</span> <span class="ui">90d</span></td>
+            <td>The quick ranges. Each one ends today and counts backwards, including today — so <span class="ui">7d</span> is today plus the six days before it. Thirty days is the default when you arrive.</td>
+          </tr>
+          <tr>
+            <td>The date button</td>
+            <td>Reads out the current range, for example <span class="val">Jul 7 – Aug 5</span>. Opens a two-month calendar with the quick ranges repeated down the side. Nothing on the page moves until you press <span class="ui">Apply</span> — you can click a wrong day and correct it without the whole page reloading twice.</td>
+          </tr>
+          <tr>
+            <td><span class="ui">Campaigns ▾</span></td>
+            <td>Narrows everything to the campaigns you tick. Searchable, and you can pick as many as you like. Leaving it empty means <em>all campaigns</em>.</td>
+          </tr>
+          <tr>
+            <td><span class="ui">Clients ▾</span></td>
+            <td>The same, by client. This is the control you use for a client report: pick one client and every number on the page becomes that client's.</td>
+          </tr>
+          <tr>
+            <td><span class="ui">Platform ▾</span></td>
+            <td>EmailBison or Instantly. This only changes the <strong>Attribution</strong> tab, because every email, reply and inbox in the rest of the dashboard comes from EmailBison — but the results feed carries both. Your selection shows as a removable chip beside the control.</td>
+          </tr>
+          <tr>
+            <td>Reply attributes</td>
+            <td>Three extra dropdowns — <span class="ui">Current brokerage</span>, <span class="ui">Location</span>, <span class="ui">Sales volume</span> — that appear <em>only</em> on the Replies sub-view. They describe the person who replied, so on a chart of days or a table of campaigns they would have nothing to act on. Their values are read from the actual leads, showing the fifty most common, with the rest reachable by typing.</td>
+          </tr>
+          <tr>
+            <td><span class="ui">Compare previous</span></td>
+            <td>Adds the period immediately before the one you are looking at. See below.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Compare previous</h3>
+    <p>
+      Ticking this box does two things at once. Every headline tile grows a small
+      change figure underneath it, and the chart gains a faded second line
+      showing the earlier period drawn over the current one.
+    </p>
+    <p>
+      The comparison period is always <strong>the same length as the one you are
+      looking at, ending the day before it starts</strong>. Thirty days back to
+      5 August compares against the thirty days ending 6 July. The exact dates are
+      spelled out next to the checkbox — <span class="val">vs Jun 7 – Jul 6</span> —
+      rather than being left as "the previous period", which different people read
+      three different ways.
+    </p>
+    <div class="note">
+      <span class="note-label">Where it appears</span>
+      <p>
+        Compare previous is shown on the <strong>Campaign</strong> tab only,
+        because that is the only tab that draws something with it. On
+        Infrastructure, Attribution and Copy &amp; Offer it would be a checkbox
+        that changes nothing, which reads as broken rather than absent.
+      </p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Which controls affect which tab</h3>
+    <div class="table-wrap">
+      <table class="narrow">
+        <caption>Coverage at a glance</caption>
+        <thead><tr><th>Tab</th><th>Dates</th><th>Campaigns</th><th>Clients</th><th>Platform</th><th>Compare</th></tr></thead>
+        <tbody>
+          <tr><td>Campaign</td><td>Yes</td><td>Yes</td><td>Yes</td><td>No</td><td>Yes</td></tr>
+          <tr><td>Attribution</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Yes</td><td>No</td></tr>
+          <tr><td>Copy &amp; Offer</td><td>Yes</td><td>Yes</td><td>Yes</td><td>No</td><td>No</td></tr>
+          <tr><td>Infrastructure</td><td colspan="5">None — the filter bar is not shown at all. Every figure on that tab is a lifetime total for the sending estate, so a date range would have nothing to change.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== 03 KPI BAND ====================== -->
+<section class="part">
+  <header class="part-head">
+    <span class="part-eyebrow">Part 03</span>
+    <h2 class="part-title">The headline numbers</h2>
+    <p class="part-lede">
+      Twelve figures in two rows of six, sitting directly under the filter bar on
+      the Campaign tab. They are the summary of everything below them.
+    </p>
+  </header>
+
+  <div class="sec">
+    <h3 class="sec-title">The first row — volume</h3>
+    <div class="cards">
+      <div class="mini"><h5><span class="swatch" style="background:var(--s-sent)"></span>Sent</h5>
+        <p>Emails delivered out of the door in the selected range.</p></div>
+      <div class="mini"><h5><span class="swatch" style="background:var(--s-prospects)"></span>Prospects</h5>
+        <p>Distinct people contacted in the range. One person contacted three times counts once.</p></div>
+      <div class="mini"><h5><span class="swatch" style="background:var(--s-replies)"></span>Replies</h5>
+        <p>Every reply received, including automatic ones. Bounce notifications are excluded — they are not replies.</p></div>
+      <div class="mini"><h5><span class="swatch" style="background:var(--s-human)"></span>Human Replies</h5>
+        <p>Replies with a person behind them. Out-of-office notes and auto-responders are taken out.</p></div>
+      <div class="mini"><h5><span class="swatch" style="background:var(--s-positive)"></span>Positive</h5>
+        <p>Replies marked as interested. This is the figure the whole operation is trying to grow.</p></div>
+      <div class="mini"><h5><span class="swatch" style="background:var(--s-bounces)"></span>Bounces</h5>
+        <p>Emails that failed to land. Underlined when it is not zero, so it is never something you scroll past.</p></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">The second row — rates and timing</h3>
+    <div class="cards">
+      <div class="mini"><h5>Reply Rate</h5>
+        <p>How often an email earns any reply at all.<span class="formula">Replies ÷ Sent</span></p></div>
+      <div class="mini"><h5>Human Rate</h5>
+        <p>The same, counting only real people. Always lower than Reply Rate.<span class="formula">Human Replies ÷ Sent</span></p></div>
+      <div class="mini"><h5>Positive Rate</h5>
+        <p>Of the people who replied, how many were interested. Measured against <em>replies</em>, not sends.<span class="formula">Positive ÷ Replies</span></p></div>
+      <div class="mini"><h5>Lead to Email</h5>
+        <p>How many emails it takes to earn one positive reply, shown as a ratio such as <span class="val">1 : 700</span>.<span class="formula">Sent ÷ Positive</span></p></div>
+      <div class="mini"><h5>Median Reply Time</h5>
+        <p>How long a typical prospect takes to reply after the first email reaches them.</p></div>
+      <div class="mini"><h5>Median Follow-up Time</h5>
+        <p>How long <em>we</em> take to answer once someone replies. A measure of the team, not the copy.</p></div>
+    </div>
+    <div class="note">
+      <span class="note-label">Why median and not average</span>
+      <p>
+        A median is the typical case: half were faster, half slower. An average
+        is dragged upward by the one person who replied three weeks later, which
+        makes it a worse description of a normal day. On the Campaigns table you
+        can add the average alongside the median — a wide gap between the two is
+        itself a finding.
+      </p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Reading a tile</h3>
+    <ul class="plain">
+      <li><strong>Numbers are rounded here on purpose.</strong> The band shows
+        <span class="val">272.4K</span> where the tables show
+        <span class="val">272,389</span>. The band is for scanning; the tables
+        are for comparing.</li>
+      <li><strong>A dash means "no data", not zero.</strong> "No replies yet"
+        and "replies answered instantly" must not look alike, so anything that
+        cannot be worked out shows <span class="val">–</span> rather than a
+        confident <span class="val">0</span>.</li>
+      <li><strong>Change your filters and the tiles go quiet, not stale.</strong>
+        Each tile shows a placeholder while the new figure loads, so you are
+        never reading last month's number under this month's filter.</li>
+      <li><strong>With Compare on</strong>, each tile gains a small change
+        figure. Green is an improvement, red is a decline — and for bounces and
+        reply times, an improvement means <em>going down</em>.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ====================== 04 CHARTS ====================== -->
+<section class="part">
+  <header class="part-head">
+    <span class="part-eyebrow">Part 04</span>
+    <h2 class="part-title">Charts</h2>
+    <p class="part-lede">
+      The day-by-day shape of the operation. Six things can be drawn, in any
+      combination, over any range.
+    </p>
+  </header>
+
+  <div class="sec">
+    <h3 class="sec-title">The six lines</h3>
+    <p>
+      Above the chart sits a row of chips, one per line. Click to add or remove.
+      Each carries its own colour dot, and that colour belongs to the line
+      permanently:
+    </p>
+    <div class="legend">
+      <span><span class="swatch" style="background:var(--s-sent)"></span>Sent</span>
+      <span><span class="swatch" style="background:var(--s-prospects)"></span>Prospects</span>
+      <span><span class="swatch" style="background:var(--s-replies)"></span>Replies</span>
+      <span><span class="swatch" style="background:var(--s-human)"></span>Human</span>
+      <span><span class="swatch" style="background:var(--s-positive)"></span>Positive</span>
+      <span><span class="swatch" style="background:var(--s-bounces)"></span>Bounces</span>
+    </div>
+    <p>
+      Turning Replies off does not repaint Human. Colour follows the thing being
+      measured, never its position in the list, so the chart you are looking at
+      now and the one in last week's screenshot use the same colours for the
+      same lines.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">The controls above the chart</h3>
+    <div class="table-wrap">
+      <table>
+        <caption>Chart controls</caption>
+        <thead><tr><th>Control</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><span class="ui">Volume</span> / <span class="ui">Rates</span></td>
+            <td>Volume plots counts — emails, replies, people. Rates plots percentages, which lets a small campaign and a large one be compared on the same axis.</td></tr>
+          <tr><td><span class="ui">Normalize</span></td>
+            <td>Rescales every line so its own peak sits at the top. Use it when one line is so much larger that the others are flat against the bottom — it compares <em>shape</em> rather than size. The tooltip keeps showing the real numbers.</td></tr>
+          <tr><td><span class="ui">Exclude weekends</span></td>
+            <td>Removes Saturdays and Sundays from the horizontal axis. Almost nothing sends at the weekend, so leaving them in draws a saw-tooth that hides the trend. It changes the chart only — the headline tiles above are untouched.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Reading the chart</h3>
+    <ul class="plain">
+      <li><strong>Hover anywhere</strong> and a vertical crosshair follows the
+        pointer. The tooltip lists <em>every</em> active line for that day, not
+        just the one nearest the cursor, so you never have to hunt for the second
+        number.</li>
+      <li><strong>With Compare on</strong>, the earlier period is drawn faded and
+        dashed underneath. The tooltip names the actual date it is comparing
+        against, so you are never guessing which day is which.</li>
+      <li><strong>If a refresh fails</strong>, the last good chart stays on
+        screen and a short message appears. A blank chart and a broken chart look
+        identical, and they mean opposite things.</li>
+    </ul>
+    <div class="note">
+      <span class="note-label">One deliberate quirk</span>
+      <p>
+        Adding up the daily Prospects line gives a larger number than the
+        Prospects tile. That is correct: someone contacted on Monday and again on
+        Friday appears on both days in the chart, but is one person over the
+        range. The chart counts contacts per day; the tile counts people.
+        Every other line adds up exactly.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== 05 CLIENTS VIEW ====================== -->
+<section class="part">
+  <header class="part-head">
+    <span class="part-eyebrow">Part 05</span>
+    <h2 class="part-title">Clients</h2>
+    <p class="part-lede">
+      The same metrics as the headline band, one row per client. This is the
+      view you open when someone asks how a particular account is doing.
+    </p>
+  </header>
+
+  <div class="sec">
+    <h3 class="sec-title">The table</h3>
+    <p>
+      Each row carries the client's name, how many campaigns they run, and then
+      the familiar figures: Sent, Prospects, Replies, Positive, Reply %,
+      Positive %, Lead:Email, Bounces and Median Reply. Sorted by volume, and
+      every column can be sorted. A totals band sits at the foot.
+    </p>
+    <p>
+      Client is only a <em>grouping</em>. Every metric is worked out exactly the
+      same way it is in the headline band — nothing is redefined for this view,
+      so a client's Reply Rate here and the Reply Rate you get by filtering to
+      that client are the same number.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">The Unassigned row</h3>
+    <p>
+      Clients do not exist inside EmailBison. A campaign belongs to a client
+      because the client's name appears in the campaign's name, and that match is
+      made on the Clients page. When a campaign matches nobody, it lands in an
+      <strong>Unassigned</strong> row rather than being quietly dropped.
+    </p>
+    <p>
+      That row is deliberate and it matters. Without it, the client rows would
+      add up to less than the headline total by however much volume failed to
+      match, and the table would be quietly wrong with nothing on screen to say
+      so. With it, the totals always tie out — and Unassigned becomes a visible
+      to-do list rather than an invisible error.
+    </p>
+    <div class="answers">
+      <b>If you see a large Unassigned row:</b> open the Clients page. It lists
+      exactly which campaigns matched nothing, and assigning one takes two
+      clicks.
+    </div>
+  </div>
+</section>
+
+<!-- ====================== 06 CAMPAIGNS VIEW ====================== -->
+<section class="part">
+  <header class="part-head">
+    <span class="part-eyebrow">Part 06</span>
+    <h2 class="part-title">Campaigns</h2>
+    <p class="part-lede">
+      The deepest view in the dashboard. It starts as one row per campaign and
+      opens all the way down to the text of an individual email.
+    </p>
+  </header>
+
+  <div class="sec">
+    <h3 class="sec-title">Choosing what to see</h3>
+    <p>
+      The header reads <span class="val">Campaign 183</span> and
+      <span class="ui">20 columns ▾</span>. The column button opens a searchable
+      list with <span class="ui">Show all</span> and <span class="ui">Hide all</span>,
+      grouped so you can turn a whole family on at once. Your choice is remembered
+      for next time.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <caption>The column groups</caption>
+        <thead><tr><th>Group</th><th>Columns</th></tr></thead>
+        <tbody>
+          <tr><td>Volume</td><td>Sent, Prospects, Replies, Bounces</td></tr>
+          <tr><td>Rates</td><td>Reply %, Human %, Positive %, Bounce %, Hard bounces, Soft (delay) bounces, Hard %, Lead:Email</td></tr>
+          <tr><td>Reply Sentiment</td><td>Positive and neutral counts</td></tr>
+          <tr><td>Reply Source</td><td>Human replies and bot replies, side by side</td></tr>
+          <tr><td>Timing</td><td>Median Reply, Average Reply, Median Follow-up</td></tr>
+          <tr><td>Events</td><td>Intros, Phone Screens, Interviews, Hires, total Outcomes, Emails per Intro, Emails per Hire</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      The campaign name stays pinned to the left as you scroll sideways, so you
+      never lose track of which row you are reading.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Hard and soft bounces</h3>
+    <p>
+      EmailBison reports one bounce figure. This dashboard splits it by reading
+      the bounce notice itself:
+    </p>
+    <ul class="plain">
+      <li><strong>Hard</strong> — the address genuinely failed. Suppress it.</li>
+      <li><strong>Soft (delay)</strong> — the receiving server was temporarily
+        busy and will retry. Not a failure.</li>
+    </ul>
+    <p>
+      This is worth knowing because roughly one bounce in seven is a delay, which
+      means the headline bounce rate is meaningfully higher than the rate of mail
+      that actually failed. That is the difference between a domain in trouble
+      and a receiving server having a slow morning. Hard and soft will not add up
+      exactly to the Bounces column — a small number of bounces arrive with no
+      notice attached — and the columns are named after what they are rather than
+      pretending otherwise.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Opening a campaign</h3>
+    <p>Rows open in three levels:</p>
+    <ol class="steps">
+      <li><b>The campaign.</b> Its totals for the selected range.</li>
+      <li><b>Its steps.</b> Each email in the sequence, in order, with the wait
+        before it and its own numbers. Variants sit nested underneath the step
+        they replace.</li>
+      <li><b>The email itself.</b> Opening a step shows what actually gets sent.</li>
+    </ol>
+    <p>
+      The email panel has three views. <span class="ui">Preview</span> shows the
+      message as a recipient receives it, with one version of any spun text
+      chosen — press <span class="ui">Shuffle</span> to roll another.
+      <span class="ui">Spintax</span> shows the raw text with every alternative
+      highlighted, so you can see all the variations at once.
+      <span class="ui">Blueprint</span> breaks the message into its working
+      parts — greeting, opening, proof, call to action, sign-off — and shows the
+      actual line it picked for each, so you can check the split rather than
+      trust it.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Steps and variants</h3>
+    <div class="answers">
+      <b>A step is a position in the sequence. A variant is an alternative
+      wording for a position that already exists.</b> Three steps with one
+      variant on the third is a <em>three-step</em> sequence, and it is counted
+      that way everywhere in the dashboard — in this table, on the campaign page,
+      on the offer cards, and in the dialog that copies a sequence elsewhere.
+    </div>
+    <p>
+      A row therefore reads <span class="val">3 steps · 1 variant</span>, never
+      "4 steps". Waits are shown as the gap <em>before</em> a step —
+      <span class="val">sends immediately</span> for the first, then
+      <span class="val">1d after step 1</span> — because the first email goes out
+      the moment a lead enters the sequence, and printing a delay against it
+      would claim a wait that never happens. A variant never shows a wait of its
+      own: it inherits its parent's position.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Medals</h3>
+    <p>
+      Where a step has more than one variant, the best performer earns
+      <span class="val">🥇</span>, then <span class="val">🥈</span> and
+      <span class="val">🥉</span>. Ranking is by positive rate, with reply rate
+      breaking a tie.
+    </p>
+    <p>
+      A medal is only awarded once a variant has sent at least
+      <strong>200 emails</strong>. Without a floor, a variant with three sends and
+      one positive reply wins every time, and a gold medal on a sample of three
+      is worse than no medal at all.
+    </p>
+  </div>
+</section>
+
+<!-- ====================== 07 REPLIES ====================== -->
+<section class="part">
+  <header class="part-head">
+    <span class="part-eyebrow">Part 07</span>
+    <h2 class="part-title">Replies</h2>
+    <p class="part-lede">
+      Everything so far measures the sending. This view measures the
+      <em>people</em> — who replied, what kind of agent they are, and what was
+      said.
+    </p>
+  </header>
+
+  <div class="sec">
+    <h3 class="sec-title">The breakdown cards</h3>
+    <p>
+      The top of the view is a set of cards, each slicing the same replies a
+      different way, largest group first, with the positive share shown against
+      each bar:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <caption>The six groupings</caption>
+        <thead><tr><th>Card</th><th>What it groups by</th></tr></thead>
+        <tbody>
+          <tr><td>Brokerage (client)</td><td>The client whose campaign earned the reply.</td></tr>
+          <tr><td>Current brokerage</td><td>Where the person who replied works today.</td></tr>
+          <tr><td>Location</td><td>Their office city and state.</td></tr>
+          <tr><td>Sales volume</td><td>Banded — under $1M, $1M–2.5M, $2.5M–5M and upward.</td></tr>
+          <tr><td>MLS affiliation</td><td>Which listing service they belong to.</td></tr>
+          <tr><td>Top producing city</td><td>Where they actually do their business.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      These cards are configurable per client — a different client can be set up
+      with a different set from the Clients page, without anything being rebuilt.
+      Where a grouping is only answered for part of the audience, the card says
+      so rather than quietly reporting on a subset.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Drilling in</h3>
+    <p>
+      Click any row on any card — <span class="val">The Keyes Company</span>,
+      <span class="val">Charlotte, NC</span>, <span class="val">Under $1M</span> —
+      and the reply list below narrows to exactly that group. Click it again to
+      clear. This works on all six cards.
+    </p>
+    <p>
+      The three dropdowns in the filter bar do the same job for brokerage,
+      location and sales volume, with two differences: they allow several values
+      at once, and they narrow the cards as well as the list. Use a card click
+      for a quick look; use the filter bar when you want the whole view scoped.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">The reply list</h3>
+    <div class="table-wrap">
+      <table>
+        <caption>List controls</caption>
+        <thead><tr><th>Control</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td>Search</td><td>Matches a name, an email address or a subject line.</td></tr>
+          <tr><td><span class="ui">All</span> / <span class="ui">Positive only</span></td><td>Narrows to replies marked interested. Any drill-down is cleared when you switch, because it belonged to the previous population.</td></tr>
+          <tr><td>Paging</td><td>Fifty at a time, with the total stated so you know how deep the list goes.</td></tr>
+          <tr><td>A row</td><td>Shows who replied, the campaign that reached them, when it arrived and a preview of what they said.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Logging an outcome</h3>
+    <p>
+      A reply is not the end of the story. From any reply you can record what
+      happened next — an introduction, a phone screen, an interview, a hire —
+      and it is credited to that campaign from then on, appearing in the Events
+      columns and on the Attribution tab. Logged outcomes can be removed again if
+      one is recorded by mistake.
+    </p>
+  </div>
+</section>
+
+<!-- ====================== 08 INFRASTRUCTURE ====================== -->
+<section class="part">
+  <header class="part-head">
+    <span class="part-eyebrow">Part 08</span>
+    <h2 class="part-title">Infrastructure</h2>
+    <p class="part-lede">
+      The health of the sending estate — around 1,470 inboxes across 150 sending
+      domains. This tab answers one question: is anything drifting toward a
+      reputation problem?
+    </p>
+  </header>
+
+  <div class="sec">
+    <h3 class="sec-title">The headline, and why it is not enough</h3>
+    <p>
+      The large figure is the bounce rate across everything. It is a useful
+      number and a misleading one on its own: an average over 150 domains cannot
+      tell you whether you have a broad problem or two bad apples.
+    </p>
+    <p>
+      So directly beside it, the estate is split into three bands. These are
+      cold-email industry thresholds, not house rules — sustained bounce above
+      3% is what gets a sending domain flagged.
+    </p>
+    <div class="table-wrap">
+      <table class="trio">
+        <caption>The three bands</caption>
+        <thead><tr><th>Band</th><th>Bounce rate</th><th>What it means</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill pill-ok">Healthy</span></td><td>Under 2%</td><td>Nothing to do.</td></tr>
+          <tr><td><span class="pill pill-warn">Watch</span></td><td>2% – 3%</td><td>Not yet a problem, but heading for one. Worth knowing how much volume sits here.</td></tr>
+          <tr><td><span class="pill pill-crit">Critical</span></td><td>Over 3%</td><td>Act now. Reputation damage compounds.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Each band reports both how many domains are in it and how much sending they
+      carry. Those are different facts and the second is usually the important
+      one: "two domains are bad" and "a third of your volume is drifting toward
+      the line" call for very different responses.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Three ways to look at it</h3>
+    <div class="table-wrap">
+      <table>
+        <caption>Views</caption>
+        <thead><tr><th>View</th><th>Use it when</th></tr></thead>
+        <tbody>
+          <tr><td>By domain</td><td>The default. Reputation is managed at the domain, so this is where most decisions get made.</td></tr>
+          <tr><td>By provider</td><td>Comparing across mailbox providers, to see whether one is behaving worse than the rest.</td></tr>
+          <tr><td>By inbox</td><td>The individual mailbox — its address, provider, daily limit and status. Not filtered by volume, so you can find an inbox that has never sent, which is itself a finding.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Each view has a search box and can be sorted by volume, bounce rate or
+      reply rate.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Needs attention</h3>
+    <p>
+      A separate list, sorted so the worst bounce rate is at the top rather than
+      the biggest sender. One bad inbox can be found without scrolling past
+      twenty healthy ones.
+    </p>
+    <p>
+      It ignores anything that has sent fewer than fifty emails. A bounce rate
+      over three sends is noise — a single bounce is 33% and means nothing.
+      Fifty is low enough to catch a newly warming inbox going bad and high
+      enough that the list is worth reading.
+    </p>
+  </div>
+</section>
+
+<!-- ====================== 09 ATTRIBUTION ====================== -->
+<section class="part">
+  <header class="part-head">
+    <span class="part-eyebrow">Part 09</span>
+    <h2 class="part-title">Attribution</h2>
+    <p class="part-lede">
+      What happened after the reply. Introductions, phone screens, interviews and
+      hires — and which campaigns earned them.
+    </p>
+  </header>
+
+  <div class="sec">
+    <h3 class="sec-title">Where the outcomes come from</h3>
+    <p>
+      Outcomes arrive from a separate results feed, and that feed covers more
+      than EmailBison. Each outcome is one of three things, and the top of the
+      tab reports the split honestly:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <caption>How each outcome is classified</caption>
+        <thead><tr><th>Classification</th><th>What it means</th></tr></thead>
+        <tbody>
+          <tr><td>Credited to a campaign</td><td>The feed named an EmailBison campaign. This is the only kind that appears in any campaign's numbers.</td></tr>
+          <tr><td>Another platform</td><td>The feed named an Instantly campaign. Real result, not ours to claim.</td></tr>
+          <tr><td>No campaign found</td><td>Added directly by the client with no campaign attached.</td></tr>
+          <tr><td>Not yet resolved</td><td>Still being matched up. Will move into one of the categories above.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note">
+      <span class="note-label">Why this care is taken</span>
+      <p>
+        The same people are in both systems. Matching an Instantly result to an
+        EmailBison campaign by email address would <em>succeed</em> — and would
+        credit our campaign with another platform's work. It is also the kind of
+        error that never gets caught, because it makes the numbers look better.
+        So only an outcome the feed can prove belongs to an EmailBison campaign
+        is ever credited to one.
+      </p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">What it costs to earn one</h3>
+    <p>
+      Four measures, each showing the count and how many emails it took:
+    </p>
+    <div class="cards">
+      <div class="mini"><h5>Email to Introduction</h5><p>Sending required per introduction.</p></div>
+      <div class="mini"><h5>Email to Phone Call</h5><p>Counts both scheduled and held calls — the question is how much sending buys a conversation.</p></div>
+      <div class="mini"><h5>Email to Interview</h5><p>Scheduled and held, on the same principle.</p></div>
+      <div class="mini"><h5>Email to Hire</h5><p>The one that pays for everything else.</p></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">The funnel</h3>
+    <p>
+      Six stages in fixed progression: <strong>Introduction → Phone screen
+      scheduled → Phone screen → Interview scheduled → Interview → Hired</strong>.
+      The order is the real-world order and never re-sorts by size — a funnel
+      sorted by size is a bar chart with extra steps.
+    </p>
+    <h4 class="sub-title">Where people stopped</h4>
+    <p>
+      Three outcomes are deliberately kept out of the funnel:
+      <strong>no show</strong>, <strong>rejected</strong> (either direction) and
+      <strong>keep warm</strong>. These are not stages anyone passes through —
+      they are where someone stopped. Putting them in the funnel would read as
+      though hundreds of people <em>advanced</em> to "no show". They get their own
+      section beneath it.
+    </p>
+    <p>
+      If a new kind of outcome starts arriving tomorrow that fits neither list,
+      it still appears, under its own name. A silently dropped outcome is
+      indistinguishable from an outcome that never happened.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Outcomes over time, and by campaign</h3>
+    <ul class="plain">
+      <li><strong>Over time</strong> — outcomes by week, stacked by stage, so you
+        can see results building rather than a single total. The most recent week
+        is drawn faded and labelled as incomplete rather than dropped, because a
+        part-finished week plotted as though it were finished looks like a
+        collapse.</li>
+      <li><strong>Which campaigns produce results</strong> — a table ranking
+        campaigns by what they actually produced rather than by how much they
+        sent. This is where a campaign with modest volume and excellent outcomes
+        becomes visible.</li>
+    </ul>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Every outcome</h3>
+    <p>
+      The full list, filterable by outcome type and by source, showing the person,
+      the campaign it was credited to, what happened and when. This is the record
+      to open when a number needs explaining to someone.
+    </p>
+  </div>
+</section>
+
+<!-- ====================== 10 COPY & OFFER ====================== -->
+<section class="part">
+  <header class="part-head">
+    <span class="part-eyebrow">Part 10</span>
+    <h2 class="part-title">Copy &amp; Offer</h2>
+    <p class="part-lede">
+      Which words work, and which offers work. Two related questions on one tab.
+    </p>
+  </header>
+
+  <div class="sec">
+    <h3 class="sec-title">The seven ways an email is described</h3>
+    <p>
+      Comparing copy needs a vocabulary. Every opening email can be tagged along
+      seven dimensions, each with suggested values you can extend:
+    </p>
+    <div class="table-wrap">
+      <table class="trio">
+        <caption>Copy dimensions</caption>
+        <thead><tr><th>Dimension</th><th>Describes</th><th>Typical values</th></tr></thead>
+        <tbody>
+          <tr><td>Subject Line Type</td><td>How the subject earns the open</td><td>Variable, Direct, Personalized, Question, Curiosity Gap</td></tr>
+          <tr><td>Opening</td><td>How the first line approaches the reader</td><td>Compliment, Observation, Mutual Connection, Problem, Direct Ask</td></tr>
+          <tr><td>Preposition</td><td>How the offer is framed</td><td>Opportunity, Comparison, Scarcity, Status, Savings</td></tr>
+          <tr><td>Social Proof</td><td>What credibility is used, if any</td><td>None, Named Client, Volume, Peer Group, Result</td></tr>
+          <tr><td>Call To Action</td><td>What the email asks for</td><td>Interest Check, Book a Call, Reply Yes, Question, Soft Ask</td></tr>
+          <tr><td>Tone / Style</td><td>How it sounds</td><td>Formal, Casual, Direct, Warm, Blunt</td></tr>
+          <tr><td>Structure</td><td>The shape of the message</td><td>Short, Long, Bulleted, Narrative, Two-liner</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Tagging is done on a campaign's own page, on its Copy &amp; Offer tab.
+      Untagged copy is never hidden — it appears as an <span class="val">Untagged</span>
+      row so you can see how much of the picture is still missing.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">How the copy performs</h3>
+    <p>
+      The main table groups every campaign's opening email by the dimensions you
+      have selected, and reports sends, replies, positives and bounces for each
+      group. Start with one dimension; add more with
+      <span class="ui">+ Add Dimension</span> to cross them — "Question subject
+      lines <em>with</em> a named client as proof" is a different and often
+      better question than either on its own. Chips show what is active; remove
+      one by clicking its ✕. The last one cannot be removed, because an empty
+      selection has no table to show.
+    </p>
+    <p>
+      Rows are sorted by positive rate rather than volume, so the winner is at
+      the top where you expect it. Coverage is stated above the table — how much
+      of your sending is actually tagged — so a confident-looking ranking built
+      on a fraction of the data cannot be mistaken for the whole picture.
+    </p>
+    <div class="note">
+      <span class="note-label">The 500-send floor</span>
+      <p>
+        Medals here need at least <strong>500 sends</strong> behind a value
+        before it can be ranked. Copy comparisons are the easiest place in the
+        product to fool yourself, and without a floor the smallest sample wins
+        every time.
+      </p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Offers</h3>
+    <p>
+      An offer is what you are actually selling — the proposition, not the
+      wording. Several campaigns usually run the same one. Each offer is a card
+      showing:
+    </p>
+    <ul class="plain">
+      <li>Its name and niche, and how many campaigns run it.</li>
+      <li>A line naming the sequence behind it — <span class="val">3 steps from
+        Jeff Cook Real Estate…</span> — which is a <strong>button</strong>.
+        Clicking it opens the full sequence: every step in order, the waits
+        between them, variants nested under the step they replace, and each one
+        openable to its Preview, Spintax and Blueprint. You can read exactly what
+        you are about to roll out without leaving the page.</li>
+      <li>Sent, Reply %, Positive % and Bounce % for the selected range.</li>
+      <li>A per-client split, shown only when the offer runs for more than one
+        client — for a single-client offer it would just restate the line above.</li>
+      <li><span class="ui">Copy sequence to a campaign</span>.</li>
+    </ul>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Suggested groups</h3>
+    <p>
+      Campaigns that open with the same email <em>are</em> the same offer, and the
+      dashboard can see that without being told. Suggested groups are proposals
+      built from the data — one group currently covers 36 campaigns on a single
+      subject line. Naming one turns it into a real offer; that is the only part
+      a person is genuinely needed for. These cards carry the same
+      read-the-sequence button.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Rolling a sequence out</h3>
+    <p>
+      Once a sequence is proven, it can be copied into other campaigns in one
+      pass. Pick the targets, then choose how:
+    </p>
+    <div class="table-wrap">
+      <table>
+        <caption>Copy modes</caption>
+        <thead><tr><th>Mode</th><th>What happens</th></tr></thead>
+        <tbody>
+          <tr><td>Append</td><td>The copied steps are added after whatever is already there.</td></tr>
+          <tr><td>Replace</td><td>The target's existing sequence is swapped for this one. The new steps are created first and the old ones removed only once that has succeeded, so a failure halfway through never leaves a campaign with no sequence at all.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Before anything is written, a plan is shown for each target: exactly which
+      steps will be created, with variants marked as variants and given no wait
+      of their own. Anything that would be blocked is named and explained rather
+      than silently skipped. As it runs, each campaign reports its own result, and
+      any that failed can be retried on their own without redoing the ones that
+      worked.
+    </p>
+  </div>
+</section>
+
+<!-- ====================== 11 CAMPAIGNS ====================== -->
+<section class="part">
+  <header class="part-head">
+    <span class="part-eyebrow">Part 11</span>
+    <h2 class="part-title">Campaigns</h2>
+    <p class="part-lede">
+      The operational side. Everything so far has been reporting; this is where
+      you change things.
+    </p>
+  </header>
+
+  <div class="sec">
+    <h3 class="sec-title">The list</h3>
+    <div class="table-wrap">
+      <table>
+        <caption>Finding a campaign</caption>
+        <thead><tr><th>Control</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td>Search</td><td>Matches on campaign name.</td></tr>
+          <tr><td>Status</td><td>Draft, active, paused, completed, archived — with a count beside each so you can see the shape of the workspace at a glance.</td></tr>
+          <tr><td>Tag</td><td>Narrows to campaigns carrying a particular tag.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Each row shows the campaign, its client, its status and its lifetime
+      figures. A status the dashboard does not recognise is shown in red rather
+      than quietly displayed as a draft — an unrecognised status means something
+      changed upstream and it should be visible, not hidden.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Bulk actions</h3>
+    <p>
+      Tick several campaigns and pause, resume or archive them together. Three
+      safeguards, all deliberate:
+    </p>
+    <ol class="steps">
+      <li><b>It names its targets before it runs.</b> The confirmation lists
+        exactly which campaigns will be affected — not "12 campaigns".</li>
+      <li><b>Each campaign reports its own result.</b> If nine succeed and three
+        fail, you are told which three and why, rather than getting one
+        summary that hides it.</li>
+      <li><b>A failure is a real failure.</b> If EmailBison rejects a change, its
+        own reason is shown. Nothing is reported as done unless it was done.</li>
+    </ol>
+    <p>
+      Actions that make no sense for a campaign's current state are not offered —
+      you cannot pause something already paused. A greyed-out primary button on a
+      finished campaign invites the click that queues several hundred people to
+      receive email.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Inside a campaign</h3>
+    <p>
+      Opening a campaign gives five tabs. The header carries the essentials —
+      daily limit, variant count, when it was created — with one primary button
+      that is Pause or Resume depending on where the campaign is, and absent
+      entirely when neither applies.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <caption>The five tabs</caption>
+        <thead><tr><th>Tab</th><th>What is on it</th></tr></thead>
+        <tbody>
+          <tr><td>Overview</td><td>A funnel from Sent to Replied to Interested to Bounced, each stage drawn as a share of the one above it, plus every lifetime figure the campaign has.</td></tr>
+          <tr><td>Sequence</td><td>The emails, in order, with per-step performance. Variants nested under their step. Each opens to Preview, Spintax and Blueprint. Buttons to edit, copy a sequence in, or push this one out.</td></tr>
+          <tr><td>Copy &amp; Offer</td><td>Tag this campaign's opening email against the seven dimensions, and say which offer it sells. This is what feeds the copy comparison.</td></tr>
+          <tr><td>Settings</td><td>Name, daily sending limit and content behaviour, in three groups rather than one long column of unrelated fields.</td></tr>
+          <tr><td>Activity</td><td>Every change made through this dashboard — what was done, by whom, when, and whether it succeeded.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">The sequence editor</h3>
+    <p>
+      Editing works on a flat list, because that is what a sequence actually is —
+      an ordered set of emails, with variants sitting at a position rather than
+      adding one. Rows are numbered by position and a variant is labelled
+      <span class="val">variant of 1</span> rather than being given a number of
+      its own.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <caption>Editing tools</caption>
+        <thead><tr><th>Tool</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td>Reorder</td><td>Drag a step, or use the move buttons. Waits follow the positions.</td></tr>
+          <tr><td>Add / remove</td><td>Add a step or a variant; remove one you no longer want. EmailBison will not allow a campaign's last step to be removed, and that refusal is passed through in its own words.</td></tr>
+          <tr><td>Merge tags</td><td>A menu of the placeholders this workspace can actually fill — first name, and the custom fields your leads really carry. It offers only what will merge, so you cannot insert a placeholder that resolves to nothing in a live email.</td></tr>
+          <tr><td>Formatting</td><td>Bold, italic, links and lists.</td></tr>
+          <tr><td>Wait</td><td>The delay <em>after</em> a step, before the next one. The first email always sends immediately.</td></tr>
+          <tr><td>Unsaved changes</td><td>Leaving with unsaved edits asks first.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== 12 SCHEDULE ====================== -->
+<section class="part">
+  <header class="part-head">
+    <span class="part-eyebrow">Part 12</span>
+    <h2 class="part-title">Sending schedule</h2>
+    <p class="part-lede">
+      Everything else looks backwards. This screen looks forwards: what is going
+      out next, and for whom.
+    </p>
+  </header>
+
+  <div class="sec">
+    <h3 class="sec-title">The next three days</h3>
+    <p>
+      Three cards across the top — <span class="ui">Today</span>,
+      <span class="ui">Tomorrow</span>, <span class="ui">Day after</span> — each
+      showing that day's total and campaign count. They are the day selector and
+      the comparison at the same time.
+    </p>
+    <p>
+      That matters more than it sounds. A forecast answers "what goes out
+      today"; the question straight afterwards is always "and is that normal?" —
+      which a control showing one number at a time cannot answer. Seeing
+      <span class="val">8.1K → 4.4K → 3.4K</span> tells you volume is tapering
+      before you click anything.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Per client</h3>
+    <p>
+      Below the selector, one card per client, largest first. Each shows the
+      client's total, a bar giving their <strong>share of the day</strong>, and
+      every campaign due to send with its own figure. "995 emails" does not tell
+      you whether that client is most of today's sending or a rounding error
+      against it, and that is exactly what grouping by client is for.
+    </p>
+    <p>
+      Campaign status is named only when it is <em>not</em> active. Everything
+      with mail queued for today is active, so labelling all of them adds
+      nothing — while a paused campaign that is still scheduled to send is
+      precisely the thing worth catching.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Sync schedule</h3>
+    <p>
+      The forecast itself is always read live, so there is no stale number to
+      refresh. What can lag is the <em>naming</em>: a campaign created in
+      EmailBison in the last half hour may appear here unnamed and not yet
+      attached to a client. The <span class="ui">Sync schedule</span> button
+      fetches campaigns immediately and re-reads all three days.
+    </p>
+    <div class="note">
+      <span class="note-label">If a day cannot be retrieved</span>
+      <p>
+        A clear message says so. An empty forecast and a failed one look
+        identical on screen and mean opposite things, so the failure is always
+        stated rather than shown as "nothing scheduled".
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== 13 CLIENTS PAGE ====================== -->
+<section class="part">
+  <header class="part-head">
+    <span class="part-eyebrow">Part 13</span>
+    <h2 class="part-title">Clients</h2>
+    <p class="part-lede">
+      The quietest page in the dashboard and one of the most consequential. Every
+      client-grouped number depends on what is set here.
+    </p>
+  </header>
+
+  <div class="sec">
+    <h3 class="sec-title">Why this page exists</h3>
+    <p>
+      EmailBison has no concept of a client. It has campaigns, and the client's
+      name happens to appear in the campaign's name —
+      <span class="val">The Keyes Company + Nicole + West</span>,
+      <span class="val">C21 Results - Elite Team 2 + Nicole + FMLS</span>. This
+      page is where that convention is turned into a real grouping.
+    </p>
+    <p>
+      The match is <strong>saved, not recalculated</strong> every time you load a
+      report. That means a correction you make here sticks, and renaming a client
+      tomorrow does not silently rewrite last quarter's grouping.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Adding and editing a client</h3>
+    <div class="table-wrap">
+      <table>
+        <caption>The client form</caption>
+        <thead><tr><th>Field</th><th>What it is for</th></tr></thead>
+        <tbody>
+          <tr><td>Name</td><td>How the client appears everywhere in the dashboard.</td></tr>
+          <tr><td>Aliases</td><td>Other spellings that appear in campaign names. Adding an alias here absorbs a legacy spelling without renaming anything inside EmailBison.</td></tr>
+          <tr><td>Match mode</td><td>Normally the name may appear <em>anywhere</em> in a campaign name. For a short or generic name you can tighten it to match only at the start, or only exactly.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <h4 class="sub-title">How matching behaves</h4>
+    <ul class="plain">
+      <li><strong>Whole words only.</strong> A client named <em>Rise</em> will
+        never match <em>Sunrise Realty</em>.</li>
+      <li><strong>The longest match wins.</strong> <em>C21 Results - Elite
+        Team</em> beats a shorter <em>Elite Team</em>, so the more specific
+        client gets the campaign.</li>
+      <li><strong>A genuine tie is never guessed.</strong> If two clients match
+        equally well the campaign is flagged for a person to resolve, rather than
+        one being picked silently.</li>
+      <li><strong>Your corrections are never overwritten.</strong> A campaign you
+        assign by hand stays assigned, no matter how often matching re-runs.</li>
+    </ul>
+    <p>
+      Deleting a client does not delete its campaigns — they move to Unassigned,
+      where they are visible and reassignable.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Unassigned campaigns</h3>
+    <p>
+      A panel lists every campaign that matched nobody, each with a picker beside
+      it. This is the single place where a gap in the reporting gets closed, and
+      the page states plainly that these campaigns still count toward workspace
+      totals — they appear in the Unassigned row on the Clients view.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Excluding a campaign</h3>
+    <p>
+      Some campaigns are not client work at all — internal tests, template
+      campaigns, scratch lists. Those can be excluded, with a reason recorded.
+      An excluded campaign is left out of client totals entirely rather than
+      sitting in Unassigned forever, which keeps Unassigned meaning "needs
+      attention" rather than "background noise".
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Reply groupings</h3>
+    <p>
+      Each client can be given their own set of breakdown cards on the Replies
+      view. Brokerage, location, sales volume, MLS and top producing city are all
+      available; tick the ones that matter for that client. Turning one off
+      affects only that client — the default set every other client sees is left
+      alone. A client with a custom set is marked, so an unexpected set of cards
+      is traceable rather than mysterious.
+    </p>
+  </div>
+</section>
+
+<!-- ====================== 14 SYNC ====================== -->
+<section class="part">
+  <header class="part-head">
+    <span class="part-eyebrow">Part 14</span>
+    <h2 class="part-title">Keeping the numbers fresh</h2>
+    <p class="part-lede">
+      The dashboard keeps a local copy of everything so it can answer questions
+      instantly. This is how that copy stays current, and what to do if it looks
+      like it hasn't.
+    </p>
+  </header>
+
+  <div class="sec">
+    <h3 class="sec-title">What updates, and how often</h3>
+    <p>
+      Thirteen background jobs, each running as often as its source actually
+      changes rather than as often as it is cheap to run:
+    </p>
+    <div class="table-wrap">
+      <table class="trio">
+        <caption>The refresh schedule</caption>
+        <thead><tr><th>Every</th><th>What refreshes</th><th>Why that often</th></tr></thead>
+        <tbody>
+          <tr><td>10 minutes</td><td>Replies</td><td>The one thing people watch for during a working day.</td></tr>
+          <tr><td>30 minutes</td><td>Campaigns and client matching</td><td>New campaigns should not take an hour to appear.</td></tr>
+          <tr><td>Hourly</td><td>Daily performance figures</td><td>One fetch returns the whole recent window, so frequent is nearly free.</td></tr>
+          <tr><td>Hourly</td><td>Reply timing</td><td>A draining queue that works through new replies.</td></tr>
+          <tr><td>Hourly</td><td>Outcomes, and matching them to campaigns</td><td>Results happen on human timescales, not sending ones.</td></tr>
+          <tr><td>3 hours</td><td>Per-step performance</td><td>The expensive one — hundreds of requests each run.</td></tr>
+          <tr><td>3 hours</td><td>Inbox and domain health</td><td>Sending health moves over hours, not minutes.</td></tr>
+          <tr><td>Nightly</td><td>Lead details, sequences, and four wide re-checks</td><td>See below.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">The nightly deep sweeps</h3>
+    <p>
+      Overnight, four jobs re-check a much wider window than the frequent ones
+      do. This is drift repair. EmailBison revises recent days after the fact —
+      a bounce arrives late, an open is recorded afterwards, someone marks a
+      reply as interested by hand — and without a wide nightly re-read, last
+      month's numbers would slowly drift away from the source.
+    </p>
+    <p>
+      They run in the small hours of the workspace's own timezone, an hour apart
+      so they never compete with each other, and always outside the sending
+      window.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Two properties worth trusting</h3>
+    <ul class="plain">
+      <li><strong>Running any job twice is always safe.</strong> Nothing is ever
+        double-counted. A refresh that is interrupted simply re-covers the same
+        window next time.</li>
+      <li><strong>A failed run never skips a window.</strong> Progress only moves
+        forward on success, so a bad night is re-fetched rather than lost. There
+        is no class of "we quietly missed everything between 4:12 and 4:19".</li>
+    </ul>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Sync buttons</h3>
+    <p>
+      Where waiting for the next scheduled run would be frustrating, there is a
+      button. Copy &amp; Offer has <span class="ui">Sync campaigns</span>; the
+      sending schedule has <span class="ui">Sync schedule</span>.
+    </p>
+    <p>
+      Each reports what actually changed —
+      <span class="val">101 campaigns, 40 clients, 2 unassigned, 17 excluded</span> —
+      rather than a bare "Synced", because "Synced" with no number cannot be told
+      apart from a button that did nothing, which is exactly the doubt the button
+      exists to remove. If a scheduled run happens to be in progress, it says so
+      and leaves it to finish rather than starting a second one.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">If something looks stale</h3>
+    <ol class="steps">
+      <li><b>Check the range first.</b> Most surprises are a filter, not a fault.</li>
+      <li><b>Press the relevant sync button</b> and read what it reports.</li>
+      <li><b>Give per-step figures a few hours.</b> Those refresh every three
+        hours, so a campaign launched this morning may show sends before its
+        per-step breakdown catches up.</li>
+      <li><b>Remember recent days move.</b> Yesterday's bounce count can rise
+        slightly overnight. That is EmailBison correcting itself, and the nightly
+        sweep picking the correction up.</li>
+    </ol>
+  </div>
+</section>
+
+<!-- ====================== 15 CONVENTIONS ====================== -->
+<section class="part">
+  <header class="part-head">
+    <span class="part-eyebrow">Part 15</span>
+    <h2 class="part-title">Conventions worth knowing</h2>
+    <p class="part-lede">
+      A short list of rules that hold everywhere. Knowing them removes most of
+      the surprises.
+    </p>
+  </header>
+
+  <div class="sec">
+    <h3 class="sec-title">The dash</h3>
+    <p>
+      <span class="val">–</span> means <em>no data</em>. It never means zero.
+      This is enforced everywhere: any figure that cannot honestly be worked out
+      — no replies to divide by, no timings recorded yet — shows a dash. "No
+      replies yet" and "replies answered instantly" must never look alike.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Rounded here, exact there</h3>
+    <p>
+      The headline band rounds: <span class="val">272.4K</span>,
+      <span class="val">3.7K</span>. Tables do not:
+      <span class="val">272,389</span>, <span class="val">3,679</span>. The band
+      is built for scanning at a glance; tables are built for comparing rows and
+      checking arithmetic. Digits are aligned in columns everywhere so figures
+      can be compared down a column without reading each one.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Colour</h3>
+    <p>
+      Every chart colour belongs to the thing it measures, not to its position.
+      Removing a line never repaints the others. Status colours —
+      <span class="pill pill-ok">healthy</span>
+      <span class="pill pill-warn">watch</span>
+      <span class="pill pill-crit">critical</span> — are reserved and never
+      reused for a data series, so a red line is a metric and a red chip is a
+      warning, always.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Minimum sample sizes</h3>
+    <p>
+      Three places refuse to rank or report on too little data, because a
+      confident-looking number from a tiny sample is worse than no number:
+    </p>
+    <div class="table-wrap">
+      <table class="trio">
+        <caption>Floors</caption>
+        <thead><tr><th>Where</th><th>Floor</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Copy medals</td><td>500 sends</td><td>Copy comparison is the easiest place to fool yourself.</td></tr>
+          <tr><td>Variant medals</td><td>200 sends</td><td>Otherwise a variant with three sends and one positive reply wins.</td></tr>
+          <tr><td>Follow-up time per campaign</td><td>5 replies</td><td>Below that a "median" is one person's lunch break.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">Steps and variants</h3>
+    <p>
+      Worth repeating because it appears in seven different places: a
+      <strong>step</strong> is a position in the sequence; a
+      <strong>variant</strong> is an alternative wording for a position that
+      already exists. A variant is never counted as a step, never shows a wait of
+      its own, and always appears nested under the step it replaces. Three steps
+      with one variant reads <span class="val">3 steps · 1 variant</span>
+      everywhere — the campaigns table, the campaign page, the editor, offer
+      cards, suggested groups, and both copy dialogs.
+    </p>
+  </div>
+
+  <div class="sec">
+    <h3 class="sec-title">One authority per family of numbers</h3>
+    <p>
+      Replies, Human Replies and Positive always come from the same place as each
+      other, so the three figures on a row always add up. Sent and Bounces come
+      from EmailBison's own daily figures. Prospects counts distinct people.
+      Nothing is ever sourced two different ways in two different places, which is
+      why the same metric never has two slightly different values on two screens.
+    </p>
+    <div class="answers">
+      <b>Everything ties out.</b> The daily chart adds up to the headline Sent.
+      The client rows plus Unassigned add up to the headline Sent. The campaign
+      rows add up to the headline Sent. This holds with any combination of
+      filters applied — and Prospects is the single, documented exception, for
+      the reason given in Part 04.
+    </div>
+  </div>
+</section>
+
+<footer class="doc-foot">
+  <span>Campaign Analytics Dashboard — Complete Guide</span>
+  <span>BrokerStaffer · Revised 6 August 2026</span>
+</footer>
+
+</div>
+</body>
+</html>
