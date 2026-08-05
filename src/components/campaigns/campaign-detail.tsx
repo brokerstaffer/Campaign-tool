@@ -619,7 +619,9 @@ function Sequence({
       <PushSequenceDialog
         sourceId={campaignId}
         sourceName={campaignName}
-        stepCount={steps.length}
+        // Steps only. A variant is an alternative wording at an existing
+        // position, so counting it here overstates what gets pushed.
+        stepCount={steps.filter((s) => !s.is_variant).length}
         open={pushing}
         onOpenChange={setPushing}
         onStart={deploy.start}
@@ -682,8 +684,19 @@ function Sequence({
                 </span>
               ) : null}
               {step.thread_reply ? <span className="rounded border px-1">thread</span> : null}
+              {/*
+                Shown as the gap BEFORE this step, which is the previous step's
+                wait_in_days — EmailBison defines the field as "how many days
+                before the sequence moves to the next step". Step 1 has no gap:
+                it sends when the lead enters, and printing its own wait here
+                claimed a delay that never happens.
+              */}
               <span className="tnum">
-                {step.wait_in_days ? `${step.wait_in_days}d` : "immediate"}
+                {index === 0
+                  ? "sends immediately"
+                  : steps[index - 1]?.wait_in_days
+                    ? `${steps[index - 1].wait_in_days}d after step ${index}`
+                    : "immediately after"}
               </span>
               {step.variants.length ? (
                 <span className="tnum rounded border px-1">

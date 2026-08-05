@@ -42,6 +42,7 @@ export async function GET(request: NextRequest) {
       clientName: r.client_name as string | null,
       status: r.status as string | null,
       stepCount: Number(r.step_count),
+      variantCount: Number(r.variant_count ?? 0),
       sent: Number(r.sent),
       prospects: Number(r.prospects),
       replies: Number(r.replies),

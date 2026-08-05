@@ -27,7 +27,14 @@ export interface CampaignRow {
   campaignName: string;
   clientName: string | null;
   status: string | null;
+  /*
+   * Steps only. A variant is an alternative WORDING of one step — EmailBison
+   * gives it order = null and variant_from_step_id = <step> — so a lead still
+   * receives one email at that position. Counting variants made a 3-step
+   * sequence read as 4.
+   */
   stepCount: number;
+  variantCount: number;
   sent: number;
   prospects: number;
   replies: number;

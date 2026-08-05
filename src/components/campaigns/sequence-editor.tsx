@@ -445,7 +445,17 @@ export function SequenceEditor({
                     />
                   </div>
                   <div className="w-28 space-y-1">
-                    <label className="text-[11px] font-medium">Wait (days)</label>
+                    {/*
+                      EmailBison's own wording: wait_in_days is "how many days
+                      before the sequence moves to the NEXT step" — a delay
+                      AFTER this email, not before it. The first email goes out
+                      as soon as the lead enters, so labelling this "Wait"
+                      beside step 1 read as a delay before anything was sent.
+                      The last step's value has nothing to gate and is inert.
+                    */}
+                    <label className="text-[11px] font-medium">
+                      {index === steps.length - 1 ? "Wait (unused)" : "Then wait (days)"}
+                    </label>
                     <Input
                       type="number"
                       min={0}

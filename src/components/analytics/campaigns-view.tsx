@@ -166,9 +166,17 @@ function StepRow({
             </span>
             {medal ? <span title="Best positive rate">{medal}</span> : null}
             <span className="max-w-[260px] truncate">{step.subject ?? "—"}</span>
-            {step.waitInDays ? (
+            {/*
+              EmailBison defines wait_in_days as "how many days before the
+              sequence moves to the NEXT step" — a delay AFTER this email. It
+              was rendered as "wait 1d" against every step including the first,
+              which reads as a delay before anything is sent; the first email
+              goes out as soon as the lead enters. A variant has no gap of its
+              own: it replaces its parent step at the same position.
+            */}
+            {!nested && step.waitInDays ? (
               <span className="text-[10px] text-muted-foreground/70">
-                wait {step.waitInDays}d
+                then wait {step.waitInDays}d
               </span>
             ) : null}
           </button>
@@ -324,9 +332,17 @@ export function CampaignsView() {
                             {row.clientName}
                           </span>
                         ) : null}
+                        {/*
+                          Steps and variants counted separately, and labelled.
+                          A bare "4" beside a 3-step sequence was read as the
+                          step count and disagreed with EmailBison.
+                        */}
                         {row.stepCount ? (
                           <span className="shrink-0 text-[10px] text-muted-foreground/70">
-                            {row.stepCount}
+                            {row.stepCount} step{row.stepCount === 1 ? "" : "s"}
+                            {row.variantCount
+                              ? ` · ${row.variantCount} variant${row.variantCount === 1 ? "" : "s"}`
+                              : ""}
                           </span>
                         ) : null}
                       </button>
