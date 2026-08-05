@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, Loader2, Pencil, Plus, Send, X } from "lucide-react";
+import { ChevronDown, ChevronRight, ListOrdered, Loader2, Pencil, Plus, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SequenceDialog } from "@/components/campaigns/sequence-dialog";
 import { Input } from "@/components/ui/input";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
@@ -249,10 +250,11 @@ export function CopyOfferView() {
                 </div>
 
                 {offer.source ? (
-                  <p className="mt-2 truncate text-xs text-muted-foreground">
-                    Sequence: {offer.source.step_count} steps from{" "}
-                    <span className="text-foreground">{offer.source.source_name}</span>
-                  </p>
+                  <SequenceLink
+                    campaignId={offer.source.source_campaign_id}
+                    campaignName={offer.source.source_name}
+                    stepCount={offer.source.step_count}
+                  />
                 ) : (
                   <p className="mt-2 text-xs text-muted-foreground">
                     No campaign attached yet — nothing to copy from.
@@ -707,6 +709,49 @@ export function CopyOfferView() {
   );
 }
 
+/*
+ * The sequence behind a card, one click away.
+ *
+ * "Sequence: 3 steps from <campaign>" named the copy without showing it, so
+ * reading the emails you were about to roll out meant leaving for the campaign
+ * page. It is the same sentence — now it opens.
+ */
+function SequenceLink({
+  campaignId,
+  campaignName,
+  stepCount,
+}: {
+  campaignId: number;
+  campaignName: string;
+  stepCount: number;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        title={`View the full sequence from ${campaignName}`}
+        className="group -mx-1.5 mt-2 flex w-[calc(100%+0.75rem)] items-center gap-1.5 rounded-md border border-transparent px-1.5 py-1 text-left text-xs text-muted-foreground transition-colors hover:border-border hover:bg-accent/40 hover:text-foreground"
+      >
+        <ListOrdered className="size-3.5 shrink-0" />
+        <span className="min-w-0 flex-1 truncate">
+          {stepCount} {stepCount === 1 ? "step" : "steps"} from{" "}
+          <span className="text-foreground">{campaignName}</span>
+        </span>
+        <ChevronRight className="size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
+      </button>
+      <SequenceDialog
+        campaignId={campaignId}
+        campaignName={campaignName}
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </>
+  );
+}
+
 /** §6.2: "Create an offer with a name and the niche it targets." */
 function CreateOfferDialog({
   open, onOpenChange, onCreated,
@@ -1042,6 +1087,14 @@ function SuggestionCard({
         {suggestion.variants > 1 ? ` · ${suggestion.variants} subject variants` : ""}
         {suggestion.claimed > 0 ? ` · ${suggestion.claimed} already in an offer` : ""}
       </p>
+
+      {/* The same affordance as a real offer card — you are about to name this
+          group, and the sequence is what you are naming. */}
+      <SequenceLink
+        campaignId={suggestion.source_campaign_id}
+        campaignName={suggestion.source_name}
+        stepCount={suggestion.step_count}
+      />
 
       <dl className="mt-3 grid grid-cols-4 gap-2 text-center">
         {(

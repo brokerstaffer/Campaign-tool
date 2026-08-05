@@ -3,22 +3,17 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  AlertTriangle,
-  ArrowLeft,
-  ChevronDown,
-  ChevronRight,
-  Loader2,
-  Pause,
-  Play,
-} from "lucide-react";
+import { ArrowLeft, Loader2, Pause, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EmailPanel } from "@/components/analytics/email-panel";
 import { CopySequenceDialog } from "@/components/campaigns/copy-sequence-dialog";
 import { PushSequenceDialog } from "@/components/campaigns/push-sequence-dialog";
 import { BulkDeployPanel, useBulkDeploy } from "@/components/analytics/bulk-deploy";
 import { SequenceEditor, type EditableStep } from "@/components/campaigns/sequence-editor";
+import {
+  SequenceView,
+  type SequenceStep as Step,
+} from "@/components/campaigns/sequence-view";
 import { CopyTagsPanel } from "@/components/campaigns/copy-tags-panel";
 import { OfferPicker } from "@/components/campaigns/offer-picker";
 import { fullNumber, percent } from "@/lib/analytics/format.ts";
@@ -33,29 +28,6 @@ import { cn } from "@/lib/utils";
  * absent entirely when neither applies. A greyed-out primary button on a
  * completed campaign invites the click that queues 828 people to receive email.
  */
-
-interface Step {
-  id: number;
-  step_order: number | null;
-  email_subject: string | null;
-  email_body: string | null;
-  wait_in_days: number | null;
-  is_variant: boolean;
-  thread_reply: boolean;
-  orphanedVariant?: boolean;
-  stats: StepStats | null;
-  variants: Array<Omit<Step, "variants">>;
-}
-
-interface StepStats {
-  sent: number;
-  contacted: number;
-  opens: number;
-  replies: number;
-  bounced: number;
-  unsubscribed: number;
-  interested: number;
-}
 
 interface Campaign {
   id: number;
@@ -386,53 +358,6 @@ function CopyAndOffer({ campaignId, steps }: { campaignId: number; steps: Step[]
   );
 }
 
-/** One variant of a step: subject, its numbers, and its actual email. */
-function VariantRow({
-  variant,
-  index,
-}: {
-  variant: Omit<Step, "variants">;
-  index: number;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="overflow-hidden rounded-md border bg-muted/30">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-start gap-2 p-2.5 text-left hover:bg-muted/50"
-      >
-        <ChevronRight
-          className={cn(
-            "mt-0.5 size-3 shrink-0 text-muted-foreground transition-transform",
-            open && "rotate-90",
-          )}
-        />
-        <span className="tnum shrink-0 rounded bg-background px-1.5 text-[11px]">
-          {String.fromCharCode(65 + index)}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-xs">
-            {variant.email_subject || (
-              <em className="text-muted-foreground">No subject</em>
-            )}
-          </span>
-          <span className="mt-1 block">
-            <StepStatsRow stats={variant.stats} />
-          </span>
-        </span>
-      </button>
-
-      {open ? (
-        <div className="border-t bg-background p-2.5">
-          <EmailPanel subject={variant.email_subject} body={variant.email_body} />
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 function StatusChip({ status }: { status: string }) {
   const tone = isKnownStatus(status) ? STATUS_TONE[status] : "bg-red-100 text-red-800";
   return (
@@ -566,30 +491,6 @@ function Overview({ campaign }: { campaign: Campaign }) {
   );
 }
 
-function StepStatsRow({ stats }: { stats: StepStats | null }) {
-  if (!stats) {
-    // No day-stat rows for this step. Not the same as zero sends — the
-    // day-stats backfill only reaches so far back.
-    return <span className="text-[11px] text-muted-foreground">no stats in range</span>;
-  }
-  const cells: Array<[string, number]> = [
-    ["sent", stats.sent],
-    ["opens", stats.opens],
-    ["replies", stats.replies],
-    ["interested", stats.interested],
-    ["bounced", stats.bounced],
-  ];
-  return (
-    <span className="tnum flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
-      {cells.map(([label, value]) => (
-        <span key={label}>
-          {fullNumber(value)} {label}
-        </span>
-      ))}
-    </span>
-  );
-}
-
 function Sequence({
   steps,
   campaignId,
@@ -603,7 +504,6 @@ function Sequence({
   sequenceId: number | null;
   sentStepIds: number[];
 }) {
-  const [open, setOpen] = useState<number | null>(steps[0]?.id ?? null);
   const [copying, setCopying] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -697,86 +597,7 @@ function Sequence({
         onDismiss={deploy.dismiss}
       />
       <div className="flex flex-wrap justify-end gap-2">{copyButton}</div>
-      {steps.map((step, index) => (
-        <div key={step.id} className="rounded-xl border bg-card shadow-sm">
-          <button
-            type="button"
-            onClick={() => setOpen(open === step.id ? null : step.id)}
-            className="flex w-full items-start gap-3 p-3 text-left hover:bg-accent/40"
-          >
-            {open === step.id ? (
-              <ChevronDown className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-            ) : (
-              <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-            )}
-            <span className="tnum mt-0.5 shrink-0 rounded bg-muted px-1.5 text-xs">
-              {index + 1}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm">
-                {step.email_subject || <em className="text-muted-foreground">No subject</em>}
-              </span>
-              <span className="mt-1 block">
-                <StepStatsRow stats={step.stats} />
-              </span>
-            </span>
-            <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
-              {step.orphanedVariant ? (
-                <span
-                  className="flex items-center gap-1 text-amber-700"
-                  title="This variant's parent step no longer exists upstream. Shown here so its volume isn't lost."
-                >
-                  <AlertTriangle className="size-3" />
-                  orphaned
-                </span>
-              ) : null}
-              {step.thread_reply ? <span className="rounded border px-1">thread</span> : null}
-              {/*
-                Shown as the gap BEFORE this step, which is the previous step's
-                wait_in_days — EmailBison defines the field as "how many days
-                before the sequence moves to the next step". Step 1 has no gap:
-                it sends when the lead enters, and printing its own wait here
-                claimed a delay that never happens.
-              */}
-              <span className="tnum">
-                {index === 0
-                  ? "sends immediately"
-                  : steps[index - 1]?.wait_in_days
-                    ? `${steps[index - 1].wait_in_days}d after step ${index}`
-                    : "immediately after"}
-              </span>
-              {step.variants.length ? (
-                <span className="tnum rounded border px-1">
-                  {step.variants.length} variant{step.variants.length === 1 ? "" : "s"}
-                </span>
-              ) : null}
-            </span>
-          </button>
-
-          {open === step.id ? (
-            <div className="space-y-3 border-t p-3">
-              <EmailPanel subject={step.email_subject} body={step.email_body} />
-
-              {step.variants.length ? (
-                <div className="space-y-2">
-                  <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Variants
-                  </p>
-                  {/*
-                    Openable, like a step. A variant showed its subject and its
-                    numbers with no way to read the email — which is the one
-                    thing you need in order to judge why it is winning or
-                    losing against the step it replaces.
-                  */}
-                  {step.variants.map((variant, vi) => (
-                    <VariantRow key={variant.id} variant={variant} index={vi} />
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
-      ))}
+      <SequenceView steps={steps} />
     </div>
   );
 }
