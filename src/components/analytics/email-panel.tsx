@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Shuffle } from "lucide-react";
+import { LayoutTemplate, Shuffle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Segmented } from "./segmented";
+import { buildBlueprint } from "@/lib/analytics/blueprint.ts";
+import { cn } from "@/lib/utils";
 import {
   countVariations,
   htmlToPlainText,
@@ -30,6 +32,7 @@ export function EmailPanel({
 }) {
   const [view, setView] = useState<"preview" | "spintax">("preview");
   const [seed, setSeed] = useState(1);
+  const [showBlueprint, setShowBlueprint] = useState(false);
 
   if (!body) {
     return (
@@ -67,6 +70,18 @@ export function EmailPanel({
           </Button>
         ) : null}
 
+        {/* §5.4: "A side panel breaks the message down into its parts." */}
+        <Button
+          variant={showBlueprint ? "secondary" : "ghost"}
+          size="sm"
+          className="h-7 gap-1.5 text-xs"
+          onClick={() => setShowBlueprint((v) => !v)}
+          aria-pressed={showBlueprint}
+        >
+          <LayoutTemplate className="size-3.5" />
+          Blueprint
+        </Button>
+
         <span className="ml-auto text-[11px] text-muted-foreground/70">
           {variations > 1
             ? `${variations.toLocaleString()} variations`
@@ -87,7 +102,8 @@ export function EmailPanel({
         </p>
       ) : null}
 
-      <div className="max-h-[420px] overflow-y-auto p-4">
+      <div className={cn("grid", showBlueprint && "md:grid-cols-[minmax(0,1fr)_260px]")}>
+      <div className="max-h-[420px] min-w-0 overflow-y-auto p-4">
         {view === "preview" ? (
           <div
             className="prose prose-sm max-w-none text-sm [&_a]:text-primary [&_a]:underline [&_img]:max-w-full"
@@ -101,7 +117,53 @@ export function EmailPanel({
           </pre>
         )}
       </div>
+
+      {showBlueprint ? <Blueprint body={rolled} /> : null}
+      </div>
     </div>
+  );
+}
+
+/**
+ * The message broken into its parts (§5.4).
+ *
+ * IT SHOWS THE TEXT IT PICKED, not just the label, and that is the whole reason
+ * this is safe to ship. The split is a heuristic with no tagging behind it, so
+ * it will sometimes be wrong — but a reader can see instantly that it labelled
+ * the wrong sentence "Proof", which they could not do from a name alone. The
+ * header says it is a guess rather than implying analysis.
+ */
+function Blueprint({ body }: { body: string }) {
+  const parts = buildBlueprint(body);
+
+  return (
+    <aside className="min-w-0 border-t bg-muted/30 p-3 md:border-l md:border-t-0">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        Blueprint
+      </p>
+
+      {parts.length ? (
+        <ul className="mt-2 space-y-2.5">
+          {parts.map((part) => (
+            <li key={part.key}>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+                {part.label}
+              </p>
+              <p className="mt-0.5 line-clamp-3 text-[11px] leading-snug">{part.text}</p>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Not enough structure to break this one down.
+        </p>
+      )}
+
+      <p className="mt-3 border-t pt-2 text-[10px] leading-snug text-muted-foreground/80">
+        Worked out from the wording, not from tags — check it against the email
+        before relying on it.
+      </p>
+    </aside>
   );
 }
 
