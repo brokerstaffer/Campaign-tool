@@ -23,6 +23,39 @@ interface Step {
   replies: number;
   bounced: number;
   interested: number;
+  /** Alternative wordings of THIS step. Empty for most steps. */
+  variants?: Step[];
+}
+
+/**
+ * Medals among a step and its variants (§5.3: "The best performers are marked
+ * with a medal, so the winner is obvious without reading the percentages").
+ *
+ * Ranked on positive rate — the reason to run a variant at all — with a floor,
+ * because the whole point of an A/B test is that the smaller arm must not win
+ * on three replies. Below the floor nothing is marked, which is the honest
+ * answer to "which is winning?" when the test has not run long enough.
+ */
+const VARIANT_MIN_SENT = 200;
+
+function awardStepMedals(rows: Step[]): Map<number, string> {
+  const out = new Map<number, string>();
+  if (rows.length < 2) return out;
+
+  const ranked = rows
+    .filter((r) => r.sent >= VARIANT_MIN_SENT && r.replies > 0)
+    .sort((a, b) => {
+      const ar = a.replies ? a.interested / a.replies : 0;
+      const br = b.replies ? b.interested / b.replies : 0;
+      return br === ar ? b.sent - a.sent : br - ar;
+    });
+
+  // Only worth a medal if there is something to beat.
+  if (ranked.length < 2) return out;
+  ["🥇", "🥈", "🥉"].forEach((medal, i) => {
+    if (ranked[i]) out.set(ranked[i].stepId, medal);
+  });
+  return out;
 }
 
 /** Lazily loads a campaign's steps — only once it's actually expanded. */
@@ -71,20 +104,52 @@ function StepRows({
 
   return (
     <>
-      {steps.map((step) => (
-        <StepRow key={step.stepId} step={step} colSpan={colSpan} />
-      ))}
+      {steps.map((step) => {
+        const family = [step, ...(step.variants ?? [])];
+        const medals = awardStepMedals(family);
+        return (
+          <Fragment key={step.stepId}>
+            <StepRow step={step} colSpan={colSpan} medal={medals.get(step.stepId)} />
+            {(step.variants ?? []).map((variant) => (
+              <StepRow
+                key={variant.stepId}
+                step={variant}
+                colSpan={colSpan}
+                medal={medals.get(variant.stepId)}
+                nested
+              />
+            ))}
+          </Fragment>
+        );
+      })}
     </>
   );
 }
 
-function StepRow({ step, colSpan }: { step: Step; colSpan: number }) {
+function StepRow({
+  step,
+  colSpan,
+  medal,
+  nested = false,
+}: {
+  step: Step;
+  colSpan: number;
+  medal?: string;
+  nested?: boolean;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
     <Fragment>
       <tr className="border-b bg-muted/20 text-xs">
-        <td className="sticky left-0 z-10 bg-muted/20 py-2 pl-10 pr-3">
+        <td
+          className={cn(
+            "sticky left-0 z-10 bg-muted/20 py-2 pr-3",
+            // Indented one level further so a variant reads as belonging to the
+            // step above it rather than as another step.
+            nested ? "pl-16" : "pl-10",
+          )}
+        >
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
@@ -97,13 +162,9 @@ function StepRow({ step, colSpan }: { step: Step; colSpan: number }) {
               )}
             />
             <span className="text-muted-foreground">
-              Step {step.order ?? "?"}
+              {nested ? "Variant" : `Step ${step.order ?? "?"}`}
             </span>
-            {step.isVariant ? (
-              <span className="rounded bg-primary/10 px-1 text-[10px] text-primary">
-                variant
-              </span>
-            ) : null}
+            {medal ? <span title="Best positive rate">{medal}</span> : null}
             <span className="max-w-[260px] truncate">{step.subject ?? "—"}</span>
             {step.waitInDays ? (
               <span className="text-[10px] text-muted-foreground/70">
