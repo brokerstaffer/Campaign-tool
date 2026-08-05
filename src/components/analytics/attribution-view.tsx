@@ -69,8 +69,15 @@ interface CampaignRow {
   people: number;
   byType: Record<string, number>;
 }
+interface TimelineWeek {
+  week: string;
+  counts: Record<string, number>;
+  total: number;
+}
+
 interface Summary {
   emailsSent: number;
+  timeline: TimelineWeek[];
   measures: Measure[];
   funnel: Stage[];
   totals: TypeTotal[];
@@ -302,6 +309,104 @@ function Funnel({ funnel, totals }: { funnel: Stage[]; totals: TypeTotal[] }) {
           </div>
         </div>
       ) : null}
+    </Card>
+  );
+}
+
+/* ---------- the funnel over time ---------------------------------------- */
+
+/**
+ * §7: "Timing is recorded so the funnel can be read as a timeline, not just a
+ * set of totals."
+ *
+ * 869 introductions is not actionable; 869 and RISING is. Stacked by stage so
+ * the shape of the pipeline is visible, not just its size — a week where the
+ * total holds up while interviews vanish is a different problem from a quiet
+ * week, and the totals alone cannot tell them apart.
+ *
+ * The final bar is usually a part-week, which would read as a collapse. It is
+ * drawn faded and labelled rather than dropped, because hiding the most recent
+ * data on a page about momentum is the wrong trade.
+ */
+function Timeline({ weeks }: { weeks: TimelineWeek[] }) {
+  if (weeks.length < 2) return null;
+
+  const STAGES = [
+    { key: "introduction", label: "Introduction", fill: "#2a78d6" },
+    { key: "phone_screen_scheduled", label: "Phone screen scheduled", fill: "#4a90d9" },
+    { key: "phone_screen", label: "Phone screen", fill: "#7ab8e8" },
+    { key: "interview_scheduled", label: "Interview scheduled", fill: "#1baf7a" },
+    { key: "interview", label: "Interview", fill: "#0e8a5f" },
+    { key: "hired", label: "Hired", fill: "#008300" },
+  ];
+
+  const stageTotal = (w: TimelineWeek) =>
+    STAGES.reduce((sum, s) => sum + (w.counts[s.key] ?? 0), 0);
+  const peak = Math.max(...weeks.map(stageTotal), 1);
+  const lastIndex = weeks.length - 1;
+
+  return (
+    <Card>
+      <SectionHead
+        title="Outcomes over time"
+        note="weekly · funnel stages only"
+      />
+      <div className="px-4 py-4 sm:px-5">
+        <div className="flex h-40 items-end gap-1">
+          {weeks.map((w, i) => {
+            const total = stageTotal(w);
+            const partial = i === lastIndex;
+            return (
+              <div
+                key={w.week}
+                className="group relative flex h-full min-w-0 flex-1 flex-col justify-end"
+                title={`Week of ${new Date(w.week).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                })} — ${total} outcome${total === 1 ? "" : "s"}${partial ? " (week in progress)" : ""}`}
+              >
+                {STAGES.map((stage) => {
+                  const n = w.counts[stage.key] ?? 0;
+                  if (!n) return null;
+                  return (
+                    <span
+                      key={stage.key}
+                      className={cn("w-full", partial && "opacity-50")}
+                      style={{
+                        height: `${(n / peak) * 100}%`,
+                        backgroundColor: stage.fill,
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-2 flex justify-between text-[11px] text-muted-foreground">
+          <span>
+            {new Date(weeks[0].week).toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+            })}
+          </span>
+          <span>this week (partial)</span>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 border-t pt-3">
+          {STAGES.map((stage) => (
+            <span key={stage.key} className="flex items-center gap-1.5 text-[11px]">
+              <span
+                className="size-2 shrink-0 rounded-sm"
+                style={{ backgroundColor: stage.fill }}
+                aria-hidden
+              />
+              {stage.label}
+            </span>
+          ))}
+        </div>
+      </div>
     </Card>
   );
 }
@@ -736,6 +841,7 @@ export function AttributionView() {
 
       <CoverageStrip coverage={data.coverage} />
       <Measures measures={data.measures} emailsSent={data.emailsSent} />
+      <Timeline weeks={data.timeline ?? []} />
       {/* The campaigns table carries five numeric columns and long campaign
           names; an even split cropped it. The funnel's content is fixed-width. */}
       {/*

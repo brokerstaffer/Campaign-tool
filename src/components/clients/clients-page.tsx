@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ReplyGroupings } from "@/components/clients/reply-groupings";
 import {
   Dialog,
   DialogContent,
@@ -418,6 +419,17 @@ function ClientDialog({
               over-match.
             </p>
           </div>
+
+          {/*
+            §5.5: "These groupings are configurable per client." Only on an
+            EXISTING client — a client being created has no id to attach an
+            override to, and the defaults apply until it does.
+          */}
+          {client ? (
+            <div className="border-t pt-4">
+              <ReplyGroupings clientId={client.id} clientName={client.name} />
+            </div>
+          ) : null}
         </div>
 
         <DialogFooter className="gap-2 sm:justify-between">

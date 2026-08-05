@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
   const sb = getSupabase();
 
   try {
-    const [totals, campaigns, coverage, sent] = await Promise.all([
+    const [totals, campaigns, coverage, sent, timeline] = await Promise.all([
       sb.rpc("analytics_outcome_totals", {
         p_team_id: teamId,
         p_from: filters.from,
@@ -102,9 +102,18 @@ export async function GET(request: NextRequest) {
         p_campaign_ids: campaignIds,
         p_compare: false,
       }),
+      // §7: "so the funnel can be read as a timeline, not just a set of totals".
+      sb.rpc("analytics_outcome_timeline", {
+        p_team_id: teamId,
+        p_from: filters.from,
+        p_to: filters.to,
+        p_client_ids: clientIds,
+        p_campaign_ids: campaignIds,
+        p_platforms: filters.platforms.length ? filters.platforms : null,
+      }),
     ]);
 
-    for (const r of [totals, campaigns, coverage, sent]) {
+    for (const r of [totals, campaigns, coverage, sent, timeline]) {
       if (r.error) throw new Error(r.error.message);
     }
 
@@ -168,6 +177,31 @@ export async function GET(request: NextRequest) {
             byPlatform: cov.by_platform ?? {},
           }
         : null,
+      /*
+       * Weekly buckets, pivoted to one row per week with a column per type.
+       * Weeks rather than days because outcomes are rare — 1,630 across 90 days
+       * and nine types — so a daily series is mostly zeroes with single-event
+       * spikes that read as noise rather than as a trend.
+       */
+      timeline: (() => {
+        const byWeek = new Map<string, Record<string, number>>();
+        for (const row of (timeline.data ?? []) as Array<{
+          week: string;
+          event_type: string;
+          events: number;
+        }>) {
+          const bucket = byWeek.get(row.week) ?? {};
+          bucket[row.event_type] = Number(row.events);
+          byWeek.set(row.week, bucket);
+        }
+        return [...byWeek.entries()]
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([week, counts]) => ({
+            week,
+            counts,
+            total: Object.values(counts).reduce((sum, n) => sum + n, 0),
+          }));
+      })(),
       campaigns: ((campaigns.data ?? []) as CampaignRow[]).map((r) => ({
         campaignId: Number(r.campaign_id),
         name: r.campaign_name,
