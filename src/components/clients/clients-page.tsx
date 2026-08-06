@@ -24,6 +24,8 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fullNumber } from "@/lib/analytics/format.ts";
+import { SortableHeader } from "@/components/analytics/sortable-header";
+import { sortRows, useTableSort } from "@/hooks/use-table-sort";
 import { cn } from "@/lib/utils";
 
 interface Client {
@@ -97,9 +99,16 @@ export function ClientsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Server order is lifetime volume; the third click restores it. Declared
+  // above the loading return — a hook after an early return changes hook order
+  // between renders.
+  const { sort, toggle } = useTableSort();
+
   if (isLoading) return <Skeleton className="m-4 h-96" />;
 
-  const clients = data?.clients ?? [];
+  const clients = sortRows(data?.clients ?? [], sort, (row, key) =>
+    (row as unknown as Record<string, unknown>)[key] ?? null,
+  );
   const unassigned = data?.unassigned ?? [];
 
   return (
@@ -201,10 +210,10 @@ export function ClientsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/30 text-[11px] uppercase tracking-wider text-muted-foreground">
-                <th className="px-4 py-2 text-left font-medium">Client</th>
+                <SortableHeader label="Client" sortKey="name" align="left" sort={sort} onToggle={toggle} className="px-4 py-2" />
                 <th className="px-3 py-2 text-left font-medium">Aliases</th>
-                <th className="px-3 py-2 text-left font-medium">Match</th>
-                <th className="px-3 py-2 text-right font-medium">Campaigns</th>
+                <SortableHeader label="Match" sortKey="matchMode" align="left" sort={sort} onToggle={toggle} className="px-3 py-2" />
+                <SortableHeader label="Campaigns" sortKey="campaignCount" sort={sort} onToggle={toggle} className="px-3 py-2" />
                 <th className="w-24 px-3 py-2" />
               </tr>
             </thead>

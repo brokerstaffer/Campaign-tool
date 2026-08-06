@@ -16,6 +16,8 @@ import {
   Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SortableHeader } from "@/components/analytics/sortable-header";
+import { sortRows, useTableSort } from "@/hooks/use-table-sort";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -192,7 +194,18 @@ export function CampaignsPage() {
     staleTime: 30_000,
   });
 
-  const items = useMemo(() => data?.items ?? [], [data]);
+  /*
+   * Server order is lifetime volume. No initial sort, so the third click puts
+   * it back exactly.
+   */
+  const { sort, toggle } = useTableSort();
+  const items = useMemo(
+    () =>
+      sortRows(data?.items ?? [], sort, (row, key) =>
+        (row as unknown as Record<string, unknown>)[key] ?? null,
+      ),
+    [data, sort],
+  );
 
   const apply = useMutation({
     mutationFn: async ({ action, ids }: { action: CampaignAction; ids: number[] }) => {
@@ -417,14 +430,14 @@ export function CampaignsPage() {
                     className="size-3.5 align-middle accent-foreground"
                   />
                 </th>
-                <th className="px-2 py-2 font-medium">Campaign</th>
-                <th className="px-2 py-2 font-medium">Client</th>
-                <th className="px-2 py-2 font-medium">Status</th>
-                <th className="px-2 py-2 text-right font-medium">Sent</th>
-                <th className="px-2 py-2 text-right font-medium">Replies</th>
-                <th className="px-2 py-2 text-right font-medium">Leads</th>
-                <th className="w-28 px-2 py-2 font-medium">Progress</th>
-                <th className="px-2 py-2 font-medium">Updated</th>
+                <SortableHeader label="Campaign" sortKey="name" align="left" sort={sort} onToggle={toggle} className="px-2 py-2" />
+                <SortableHeader label="Client" sortKey="clientName" align="left" sort={sort} onToggle={toggle} className="px-2 py-2" />
+                <SortableHeader label="Status" sortKey="status" align="left" sort={sort} onToggle={toggle} className="px-2 py-2" />
+                <SortableHeader label="Sent" sortKey="lifetime_emails_sent" sort={sort} onToggle={toggle} className="px-2 py-2" />
+                <SortableHeader label="Replies" sortKey="lifetime_unique_replies" sort={sort} onToggle={toggle} className="px-2 py-2" />
+                <SortableHeader label="Leads" sortKey="total_leads" sort={sort} onToggle={toggle} className="px-2 py-2" />
+                <SortableHeader label="Progress" sortKey="completion_percentage" align="left" sort={sort} onToggle={toggle} className="w-28 px-2 py-2" />
+                <SortableHeader label="Updated" sortKey="eb_updated_at" align="left" sort={sort} onToggle={toggle} className="px-2 py-2" />
                 <th className="w-9 px-2 py-2" />
               </tr>
             </thead>

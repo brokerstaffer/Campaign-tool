@@ -6,6 +6,8 @@ import { ChevronLeft, ChevronRight, Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useAnalyticsFilters } from "./filters-context";
 import { SyncButton } from "./sync-button";
+import { SortableHeader } from "./sortable-header";
+import { sortRows, useTableSort } from "@/hooks/use-table-sort";
 import { DASH, compactNumber, fullNumber, percent, ratio } from "@/lib/analytics/format.ts";
 import {
   PLATFORM_LABELS,
@@ -418,7 +420,16 @@ function Timeline({ weeks }: { weeks: TimelineWeek[] }) {
 
 function Campaigns({ rows }: { rows: CampaignRow[] }) {
   const [limit, setLimit] = useState(12);
-  const shown = rows.slice(0, limit);
+  // Server order is outcomes desc — what the section is for. Third click restores it.
+  const { sort, toggle } = useTableSort();
+  const sorted = sortRows(rows, sort, (row, key) =>
+    key === "perOutcome"
+      ? row.outcomes > 0
+        ? row.sent / row.outcomes
+        : null
+      : ((row as unknown as Record<string, unknown>)[key] ?? null),
+  );
+  const shown = sorted.slice(0, limit);
 
   return (
     <Card>
@@ -482,11 +493,11 @@ function Campaigns({ rows }: { rows: CampaignRow[] }) {
               </colgroup>
               <thead>
                 <tr className="border-b text-xs text-muted-foreground">
-                  <th className="px-5 py-2.5 text-left font-medium">Campaign</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Sent</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Outcomes</th>
-                  <th className="px-3 py-2.5 text-right font-medium">People</th>
-                  <th className="px-5 py-2.5 text-right font-medium">Per outcome</th>
+                  <SortableHeader label="Campaign" sortKey="name" align="left" sort={sort} onToggle={toggle} className="px-5 py-2.5" />
+                  <SortableHeader label="Sent" sortKey="sent" sort={sort} onToggle={toggle} className="py-2.5" />
+                  <SortableHeader label="Outcomes" sortKey="outcomes" sort={sort} onToggle={toggle} className="py-2.5" />
+                  <SortableHeader label="People" sortKey="people" sort={sort} onToggle={toggle} className="py-2.5" />
+                  <SortableHeader label="Per outcome" sortKey="perOutcome" sort={sort} onToggle={toggle} className="px-5 py-2.5" />
                 </tr>
               </thead>
               <tbody className="divide-y">

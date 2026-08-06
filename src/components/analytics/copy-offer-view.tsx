@@ -5,6 +5,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { ChevronDown, ChevronRight, ListOrdered, Loader2, Pencil, Plus, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SequenceDialog } from "@/components/campaigns/sequence-dialog";
+import { SortableHeader } from "./sortable-header";
+import { sortRows, useTableSort } from "@/hooks/use-table-sort";
 import { Input } from "@/components/ui/input";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
@@ -171,7 +173,27 @@ export function CopyOfferView() {
     staleTime: 60_000,
   });
 
-  const rows = copy.data?.rows ?? [];
+  /*
+   * No initial sort. The server orders by positive rate with untagged sunk to
+   * the bottom — "which copy WORKS, not which was sent most" — and that order
+   * is the point of the table. The third click returns to it exactly.
+   */
+  const { sort, toggle } = useTableSort();
+  const sortedRows = sortRows(copy.data?.rows ?? [], sort, (row, key) =>
+    ((row as unknown as Record<string, unknown>)[key] ?? null),
+  );
+  /*
+   * Untagged sinks to the bottom under EVERY sort, not just the default.
+   *
+   * It is not a copy choice — it is the absence of one — so ranking it against
+   * real choices would put "we do not know" at the top of an ascending Positive
+   * % sort and read as the worst-performing copy. The server already applies
+   * this rule to its own ordering; sorting has to preserve it or the table
+   * changes meaning the moment a header is clicked.
+   */
+  const rows = sort
+    ? [...sortedRows.filter((r) => !r.untagged), ...sortedRows.filter((r) => r.untagged)]
+    : sortedRows;
   /*
    * Untagged is a gap in the data, not a copy choice, so it cannot win a medal
    * — and being the largest bucket by volume it would take one every time until
@@ -487,17 +509,17 @@ export function CopyOfferView() {
                       {dimensionLabel(key)}
                     </th>
                   ))}
-                  <th className="w-[9%] px-3 py-2.5 text-right font-medium">Steps</th>
-                  <th className="w-[11%] px-3 py-2.5 text-right font-medium">Sent</th>
-                  <th className="w-[11%] px-3 py-2.5 text-right font-medium">Replies</th>
-                  <th className="w-[10%] px-3 py-2.5 text-right font-medium">Reply&nbsp;%</th>
-                  <th className="w-[10%] px-3 py-2.5 text-right font-medium">Positive&nbsp;%</th>
-                  <th className="w-[9%] px-3 py-2.5 text-right font-medium">Bounce&nbsp;%</th>
+                  <SortableHeader label="Steps" sortKey="steps" sort={sort} onToggle={toggle} className="w-[9%] py-2.5" />
+                  <SortableHeader label="Sent" sortKey="sent" sort={sort} onToggle={toggle} className="w-[11%] py-2.5" />
+                  <SortableHeader label="Replies" sortKey="replies" sort={sort} onToggle={toggle} className="w-[11%] py-2.5" />
+                  <SortableHeader label={<>Reply&nbsp;%</>} sortKey="reply_rate" sort={sort} onToggle={toggle} className="w-[10%] py-2.5" />
+                  <SortableHeader label={<>Positive&nbsp;%</>} sortKey="positive_rate" sort={sort} onToggle={toggle} className="w-[10%] py-2.5" />
+                  <SortableHeader label={<>Bounce&nbsp;%</>} sortKey="bounce_rate" sort={sort} onToggle={toggle} className="w-[9%] py-2.5" />
                   {/* The counts behind the rates. "0.7% positive" over 23,428
                       sends reads very differently once you can see it is 152
                       people — §6.1 lists all four and the table showed none. */}
-                  <th className="w-[7%] px-2 py-2.5 text-right font-medium">Pos</th>
-                  <th className="w-[8%] px-4 py-2.5 text-right font-medium">Meetings</th>
+                  <SortableHeader label="Pos" sortKey="positive" sort={sort} onToggle={toggle} className="w-[7%] py-2.5" />
+                  <SortableHeader label="Meetings" sortKey="meetings" sort={sort} onToggle={toggle} className="w-[8%] py-2.5" />
                 </tr>
               </thead>
               <tbody className="divide-y">
