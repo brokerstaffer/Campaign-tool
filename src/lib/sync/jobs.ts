@@ -154,7 +154,7 @@ export const syncEntities: JobFn = async ({ teamId }): Promise<JobResult> => {
       // `ok` alone would happily parse a login page as the client list.
       if (response.ok && type.includes("application/json")) {
         const body = await response.json();
-        const source: Array<{ name: string; slug?: string; aliases?: string[] }> =
+        const source: Array<{ id?: string; name: string; slug?: string; aliases?: string[] }> =
           body.clients ?? [];
         if (source.length) {
           // Aliases are edited locally on /clients and are NOT in the portal
@@ -165,6 +165,11 @@ export const syncEntities: JobFn = async ({ teamId }): Promise<JobResult> => {
               team_id: teamId,
               name: c.name,
               slug: c.slug || slugify(c.name),
+              // MasterInbox's own id. Every join between the two systems used to
+              // be by name, so a rename there would silently have become a
+              // second client here — and the outcomes feed names its client by
+              // id, which is the join that has to be rename-proof.
+              portal_client_id: c.id ?? null,
             })),
             { onConflict: "team_id,slug" },
           );
@@ -735,6 +740,9 @@ interface OutcomeRow {
   voided?: boolean;
   campaign_id?: number | string | null;
   emailbison_lead_id?: number | null;
+  /** MasterInbox's owning client. Present on every row since the feed added it. */
+  client_id?: string | null;
+  client_name?: string | null;
 }
 
 /**
@@ -756,6 +764,37 @@ export const syncOutcomes: JobFn = async ({ teamId, watermark }): Promise<JobRes
   const decided: Record<string, unknown>[] = [];
   const undecided: Record<string, unknown>[] = [];
   let apiCalls = 0;
+
+  /*
+   * The client lookup, by MasterInbox's id first and its name second.
+   *
+   * The id is the rename-proof key and covers 40 of our 41 clients; the name is
+   * the fallback for a client the portal roster does not return (two exist —
+   * they appear in outcomes but not in the roster). Both are loaded once rather
+   * than probed per row: 2,100 rows against 41 clients.
+   */
+  const { data: clientRows } = await getSupabase()
+    .from("clients")
+    .select("id, name, slug, portal_client_id")
+    .eq("team_id", teamId);
+  const clientByPortalId = new Map<string, string>();
+  const clientBySlug = new Map<string, string>();
+  for (const c of clientRows ?? []) {
+    if (c.portal_client_id) clientByPortalId.set(String(c.portal_client_id), c.id);
+    clientBySlug.set(slugify(c.name), c.id);
+    if (c.slug) clientBySlug.set(String(c.slug), c.id);
+  }
+  let clientUnmatched = 0;
+  /*
+   * A client the feed names that the portal roster does not return.
+   *
+   * Two exist ("Kelly + Co", "Young Realty") and between them own 59 outcomes.
+   * They are created here rather than reported and ignored: MasterInbox is the
+   * authority on who the clients are — the roster sync already creates them from
+   * the same source — and an outcome whose owner we refuse to record is an
+   * outcome missing from that client's totals for no defensible reason.
+   */
+  const newClients = new Map<string, { id: string; name: string }>();
 
   for (let page = 1; ; page++) {
     const query = new URLSearchParams({ page: String(page), per_page: "200" });
@@ -804,7 +843,26 @@ export const syncOutcomes: JobFn = async ({ teamId, watermark }): Promise<JobRes
        */
       const unattributable = platform === "direct" && !o.email && !o.emailbison_lead_id;
 
+      /*
+       * The owning client, from the feed. This is ground truth and it is stored
+       * verbatim as well as resolved, so a client we do not yet hold shows up as
+       * a name rather than vanishing. "Unknown" is MasterInbox's own placeholder
+       * for "no client", not a client.
+       */
+      const clientName = o.client_name && o.client_name !== "Unknown" ? o.client_name : null;
+      const resolvedClient =
+        (o.client_id ? clientByPortalId.get(String(o.client_id)) : undefined) ??
+        (clientName ? clientBySlug.get(slugify(clientName)) : undefined) ??
+        null;
+      if (clientName && !resolvedClient) {
+        clientUnmatched++;
+        if (o.client_id) newClients.set(String(o.client_id), { id: String(o.client_id), name: clientName });
+      }
+
       const row: Record<string, unknown> = {
+        resolved_client_id: resolvedClient,
+        source_client_ref: o.client_id ?? null,
+        source_client_name: o.client_name ?? null,
         id: o.id,
         team_id: teamId,
         email: o.email ?? null,
@@ -863,6 +921,35 @@ export const syncOutcomes: JobFn = async ({ teamId, watermark }): Promise<JobRes
    * Same rule as `replies.sentiment`: a cache job never writes a column it does
    * not own.
    */
+  /*
+   * Register any newly-seen client BEFORE the outcome rows land, so the foreign
+   * key resolves and the rows carry their owner on this run rather than the next.
+   */
+  if (newClients.size) {
+    await chunkUpsert(
+      "clients",
+      [...newClients.values()].map((c) => ({
+        team_id: teamId,
+        name: c.name,
+        slug: slugify(c.name),
+        portal_client_id: c.id,
+      })),
+      "team_id,slug",
+    );
+    const { data: refreshed } = await getSupabase()
+      .from("clients")
+      .select("id, portal_client_id")
+      .eq("team_id", teamId)
+      .not("portal_client_id", "is", null);
+    for (const c of refreshed ?? []) clientByPortalId.set(String(c.portal_client_id), c.id);
+    for (const row of [...decided, ...undecided]) {
+      if (!row.resolved_client_id && row.source_client_ref) {
+        row.resolved_client_id =
+          clientByPortalId.get(String(row.source_client_ref)) ?? null;
+      }
+    }
+  }
+
   await chunkUpsert("outcome_events", decided, "id");
   await chunkUpsert("outcome_events", undecided, "id");
 
@@ -877,6 +964,11 @@ export const syncOutcomes: JobFn = async ({ teamId, watermark }): Promise<JobRes
       emailbison: all.filter((r) => r.source_platform === "emailbison").length,
       instantly: all.filter((r) => r.source_platform === "instantly").length,
       direct: all.filter((r) => r.source_platform === "direct").length,
+      withClient: all.filter((r) => r.resolved_client_id).length,
+      // A client the feed names that we do not hold. Visible rather than
+      // silently dropped — it is fixable on the Clients page.
+      clientUnmatched,
+      clientsCreated: newClients.size,
     },
   };
 };
@@ -900,7 +992,7 @@ export const syncOutcomeAttribution: JobFn = async ({ teamId }): Promise<JobResu
 
   const { data: pending } = await sb
     .from("outcome_events")
-    .select("id, email, source_lead_id")
+    .select("id, email, source_lead_id, resolved_client_id")
     .eq("team_id", teamId)
     .is("resolution", null)
     .not("email", "is", null)
@@ -920,7 +1012,28 @@ export const syncOutcomeAttribution: JobFn = async ({ teamId }): Promise<JobResu
     byEmail.set(key, [...(byEmail.get(key) ?? []), row]);
   }
 
+  /*
+   * Which client each of our campaigns belongs to. The email match below finds
+   * the campaign that emailed a person FIRST, and the same agents are prospected
+   * by many brokerages at once — so that campaign frequently belongs to somebody
+   * else. Measured against MasterInbox: the email path named the right client
+   * 36 times and the wrong one 719 times.
+   *
+   * The feed now states the owner outright, so it arbitrates: a guessed campaign
+   * is kept only when it belongs to the client the feed named, and discarded
+   * otherwise. The outcome still counts for its client — resolved_client_id came
+   * from the feed and is untouched by any of this — it simply stops being
+   * credited to a campaign we cannot actually prove.
+   */
+  const { data: ownerRows } = await sb
+    .from("campaign_clients")
+    .select("campaign_id, client_id");
+  const campaignOwner = new Map<number, string | null>(
+    (ownerRows ?? []).map((r) => [r.campaign_id, r.client_id]),
+  );
+
   const updates: Array<{ id: string; campaignId: number | null; how: string }> = [];
+  let rejected = 0;
 
   await pool([...byEmail.keys()], 4, async (email) => {
     const events = byEmail.get(email)!;
@@ -950,7 +1063,22 @@ export const syncOutcomeAttribution: JobFn = async ({ teamId }): Promise<JobResu
 
       const campaignId = first ? Number(first.campaign_id) : null;
       if (!campaignId) how = "unresolved";
-      for (const e of events) updates.push({ id: e.id, campaignId, how });
+
+      for (const e of events) {
+        // The feed's client wins. A guessed campaign that belongs to a different
+        // one is thrown away rather than published.
+        const agrees =
+          campaignId != null &&
+          e.resolved_client_id != null &&
+          campaignOwner.get(campaignId) === e.resolved_client_id;
+
+        if (campaignId != null && !agrees) {
+          rejected++;
+          updates.push({ id: e.id, campaignId: null, how: "client_mismatch" });
+        } else {
+          updates.push({ id: e.id, campaignId, how });
+        }
+      }
     } catch {
       // Leave it unstamped so the next run retries — a transient API failure
       // must not be recorded as "this person does not exist".
@@ -974,6 +1102,9 @@ export const syncOutcomeAttribution: JobFn = async ({ teamId }): Promise<JobResu
     detail: {
       attributed: updates.filter((u) => u.campaignId).length,
       unresolved: updates.filter((u) => !u.campaignId).length,
+      // Guesses discarded because they named a campaign belonging to a different
+      // client than the feed did. These used to be published as fact.
+      rejected,
     },
   };
 };
@@ -1112,6 +1243,143 @@ export const syncLeads: JobFn = async ({ teamId }): Promise<JobResult> => {
   };
 };
 
+/** One conversation in MasterInbox, with whatever label is on it now. */
+interface ReplyLabelRow {
+  thread_id: string;
+  source_provider: string;
+  emailbison_reply_ids?: Array<number | string> | null;
+  first_emailbison_reply_id?: number | string | null;
+  label_name?: string | null;
+  label_sentiment?: string | null;
+  assigned_by?: string | null;
+  labelled_at?: string | null;
+  deleted?: boolean;
+}
+
+/**
+ * Positive and Negative, from the labels the team actually applies.
+ *
+ * WHY THIS EXISTS. MasterInbox mirrors a label back into EmailBison's
+ * `interested` flag, but only for the label named "Interested" — and
+ * "Introduction", the larger positive group, never sets it. So Positive read 118
+ * where the labels say 389. See 046 for the measurements.
+ *
+ * ONLY THE FIRST REPLY IN A THREAD IS CREDITED. A label belongs to a
+ * conversation, and 338 threads hold more than one inbound reply (569 extra).
+ * Labelling all of them would count one conversation as several positives.
+ *
+ * INSTANTLY IS SKIPPED. Same rule as the outcomes feed: another platform's
+ * result is not ours to claim. Their rows carry no EmailBison reply id anyway,
+ * so they cannot match — the filter is belt and braces, and it makes the
+ * intent explicit rather than accidental.
+ */
+export function makeReplyLabelsJob(full: boolean): JobFn {
+  return async ({ teamId, watermark }): Promise<JobResult> => {
+    const base = (process.env.OUTCOMES_BASE_URL ?? "").replace(/\/$/, "");
+    const token = process.env.OUTCOMES_TOKEN;
+    if (!base || !token) {
+      throw new Error("OUTCOMES_BASE_URL / OUTCOMES_TOKEN are not set");
+    }
+
+    const startedAt = new Date().toISOString();
+    // A 6h overlap absorbs clock skew and any label applied while the last run
+    // was mid-flight. Re-reading is free — the writer skips unchanged rows.
+    const since =
+      !full && watermark
+        ? new Date(new Date(watermark).getTime() - 6 * 3600_000).toISOString()
+        : null;
+
+    const rows: ReplyLabelRow[] = [];
+    let apiCalls = 0;
+
+    for (let page = 1; ; page++) {
+      const query = new URLSearchParams({ page: String(page), per_page: "200" });
+      if (since) query.set("updated_since", since);
+
+      const response = await fetch(`${base}/api/reply-labels?${query}`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        cache: "no-store",
+      });
+      apiCalls++;
+      if (!response.ok) {
+        throw new Error(`Reply labels API ${response.status} on page ${page}`);
+      }
+
+      const body = await response.json();
+      rows.push(...((body.data ?? []) as ReplyLabelRow[]));
+
+      /*
+       * Stop at last_page, never on an empty page. Asking for a page past the
+       * end returns 500 on this feed — the same quirk /api/outcomes has — so a
+       * loop-until-empty consumer would throw on every single run.
+       */
+      const lastPage = Number(body.meta?.last_page) || 1;
+      if (page >= lastPage) break;
+      if (page >= 200) {
+        console.warn("[cron] sync-reply-labels: stopped at the 200-page guard");
+        break;
+      }
+    }
+
+    /*
+     * A tombstone or a cleared label arrives as a row with no sentiment, and it
+     * has to reach the writer as a NULL rather than being filtered out here.
+     * Dropping them would mean Positive could only ever go up, and un-labelling
+     * something would never show.
+     */
+    const payload = rows
+      .filter((r) => r.source_provider === "emailbison")
+      .map((r) => {
+        const replyId = Number(r.first_emailbison_reply_id);
+        if (!Number.isInteger(replyId) || replyId <= 0) return null;
+        const cleared = Boolean(r.deleted) || !r.label_sentiment;
+        return {
+          reply_id: replyId,
+          thread_id: cleared ? null : r.thread_id,
+          sentiment: cleared ? null : r.label_sentiment,
+          label: cleared ? null : (r.label_name ?? null),
+          assigned_by: cleared ? null : (r.assigned_by ?? null),
+          labelled_at: cleared ? null : (r.labelled_at ?? null),
+        };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+
+    let labelled = 0;
+    let cleared = 0;
+    let unmatched = 0;
+
+    // Chunked because the payload travels as one JSON body; 1,000 rows keeps it
+    // well under any request-size limit while still being one statement each.
+    for (let i = 0; i < payload.length; i += 1000) {
+      const { data, error } = await getSupabase().rpc("apply_reply_labels", {
+        p_team_id: teamId,
+        p_rows: payload.slice(i, i + 1000),
+      });
+      if (error) throw new Error(`apply_reply_labels: ${error.message}`);
+      const result = (data ?? [])[0] ?? {};
+      labelled += Number(result.labelled ?? 0);
+      cleared += Number(result.cleared ?? 0);
+      unmatched += Number(result.unmatched ?? 0);
+    }
+
+    return {
+      rowsWritten: labelled + cleared,
+      apiCalls,
+      watermark: startedAt,
+      detail: {
+        threads: rows.length,
+        emailbison: payload.length,
+        instantly: rows.filter((r) => r.source_provider !== "emailbison").length,
+        labelled,
+        cleared,
+        // Reply ids the feed offered that we do not hold — replies on excluded
+        // or deleted campaigns. Rising means the two systems are drifting.
+        unmatched,
+      },
+    };
+  };
+}
+
 export const JOBS = {
   "sync-entities": syncEntities,
   "sync-steps": syncSteps,
@@ -1131,6 +1399,10 @@ export const JOBS = {
   "sync-daily-series-deep": makeDailySeriesJob(120),
   "sync-day-stats": makeDayStatsJob(3),
   "sync-day-stats-deep": makeDayStatsJob(14),
+  // Labels move as fast as the team works the inbox, and an incremental run is
+  // one or two pages. The nightly full walk catches anything the cursor missed.
+  "sync-reply-labels": makeReplyLabelsJob(false),
+  "sync-reply-labels-deep": makeReplyLabelsJob(true),
 } satisfies Record<string, JobFn>;
 
 export const JOB_NAMES = Object.keys(JOBS);

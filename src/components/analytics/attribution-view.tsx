@@ -188,7 +188,10 @@ function CoverageStrip({ coverage }: { coverage: Coverage }) {
             {
               label: "No campaign found",
               value: coverage.unattributed,
-              note: "looked, nothing matched",
+              // Includes outcomes whose client is known but whose campaign
+              // could not be proved. They count for the client either way —
+              // filter to that client and they are all there.
+              note: "client known, campaign not provable",
             },
             {
               label: "Not yet resolved",

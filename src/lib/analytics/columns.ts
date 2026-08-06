@@ -40,6 +40,8 @@ export interface CampaignRow {
   replies: number;
   humanReplies: number;
   positive: number;
+  negative: number;
+  neutral: number;
   botReplies: number;
   bounces: number;
   medianReplySeconds: number | null;
@@ -126,10 +128,20 @@ export const COLUMNS: ColumnDef[] = [
   { key: "hardBounceRate", label: "Hard %", group: "Rates", defaultVisible: false, render: (r) => percent(bounceRate(r.bouncesHard, r.sent), 2) },
   { key: "leadToEmail", label: "Lead:Email", group: "Rates", defaultVisible: true, render: (r) => ratio(leadToEmail(r.sent, r.positive)) },
 
-  // Reply sentiment. `negative` is honestly 0 until a classifier exists —
-  // EmailBison's `interested` is a positive signal only, with no negative
-  // counterpart. Shipping the column at 0 is truthful; inventing one is not.
+  /*
+   * Reply sentiment — all three, at last.
+   *
+   * This group could only ever draw "+" because it read EmailBison's
+   * `interested`, a positive signal with no negative counterpart. It now reads
+   * the MasterInbox label (046/048), which carries all three: 384 positive,
+   * 2,238 negative, 815 neutral in the last 90 days.
+   *
+   * A reply nobody has labelled yet counts in none of the three, which is why
+   * they do not sum to Replies — and why that is correct rather than a gap.
+   */
   { key: "sentimentPositive", label: "+", group: "Reply Sentiment", defaultVisible: false, render: (r) => fullNumber(r.positive) },
+  { key: "sentimentNeutral", label: "~", group: "Reply Sentiment", defaultVisible: false, render: (r) => fullNumber(r.neutral) },
+  { key: "sentimentNegative", label: "−", group: "Reply Sentiment", defaultVisible: false, render: (r) => fullNumber(r.negative) },
 
   // Reply source — EmailBison's own automated-reply heuristic.
   { key: "sourceHuman", label: "Human", group: "Reply Source", defaultVisible: false, render: (r) => fullNumber(r.humanReplies) },

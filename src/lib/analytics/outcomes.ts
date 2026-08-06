@@ -127,5 +127,13 @@ export const RESOLUTION_LABELS: Record<string, string> = {
   lead_id: "Matched by lead id",
   other_platform: "Instantly — not an EmailBison campaign",
   unresolved: "No EmailBison campaign found",
+  /*
+   * A campaign WAS found by email — and discarded, because it belonged to a
+   * different client than the one MasterInbox names as the owner. The same
+   * agents are prospected by several brokerages, so first-touch finds the wrong
+   * one constantly: measured at 719 wrong against 36 right. The outcome still
+   * counts for its client; it just no longer claims a campaign.
+   */
+  client_mismatch: "Belongs to this client, but no campaign we can prove",
   pending: "Not yet resolved",
 };

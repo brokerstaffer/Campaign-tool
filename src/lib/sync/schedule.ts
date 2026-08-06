@@ -58,6 +58,10 @@ export const SCHEDULE = [
   { job: "sync-daily-series-deep", dailyAtUtcHour: 7 },
   { job: "sync-day-stats-deep", dailyAtUtcHour: 8 },
   { job: "sync-replies-deep", dailyAtUtcHour: 9 },
+  // 41 pages for a full walk, one or two incrementally — cheap enough to run
+  // often, and Positive is the number people watch during a working day.
+  { job: "sync-reply-labels", everyMinutes: 30 },
+  { job: "sync-reply-labels-deep", dailyAtUtcHour: 10 },
 ] as const satisfies readonly ScheduleEntry[];
 
 /*
