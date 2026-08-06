@@ -8,7 +8,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAnalyticsFilters } from "./filters-context";
 import { ColumnPicker, useColumnPrefs } from "./column-picker";
 import { EmailPanel } from "./email-panel";
-import { COLUMNS, SORTABLE, type CampaignRow } from "@/lib/analytics/columns.ts";
+import { COLUMNS, type CampaignRow } from "@/lib/analytics/columns.ts";
+import { SortableHeader } from "./sortable-header";
+import { sortRows, useTableSort } from "@/hooks/use-table-sort";
 import { fullNumber, percent } from "@/lib/analytics/format.ts";
 import { cn } from "@/lib/utils";
 
@@ -206,7 +208,9 @@ export function CampaignsView() {
   const qs = toQueryString();
   const { visible, setVisible, hydrated } = useColumnPrefs();
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState("sent");
+  // No initial sort: the server already returns campaigns by volume, and the
+  // third click returns to exactly that.
+  const { sort, toggle } = useTableSort();
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
   const query = useQuery<{ rows: CampaignRow[]; count: number }>({
@@ -232,12 +236,14 @@ export function CampaignsView() {
             (r.clientName ?? "").toLowerCase().includes(search.toLowerCase()),
         )
       : all;
-    if (!SORTABLE.has(sort)) return filtered;
-    return [...filtered].sort(
-      (a, b) =>
-        Number(b[sort as keyof CampaignRow] ?? 0) -
-        Number(a[sort as keyof CampaignRow] ?? 0),
-    );
+    /*
+     * Sorted through the column's own `sortValue`, so a rate sorts by its
+     * number and a duration by its seconds. The old version cast the row key
+     * unchecked and coerced with Number(), which silently turned every
+     * unsortable value into 0.
+     */
+    const byKey = new Map(COLUMNS.map((c) => [c.key, c.sortValue]));
+    return sortRows(filtered, sort, (row, key) => byKey.get(key)?.(row) ?? null);
   }, [query.data, search, sort]);
 
   if (query.isLoading || !hydrated) return <Skeleton className="h-96 w-full" />;
@@ -275,26 +281,13 @@ export function CampaignsView() {
                 Campaign
               </th>
               {columns.map((c) => (
-                <th
+                <SortableHeader
                   key={c.key}
-                  className="whitespace-nowrap px-3 py-2 text-right font-medium"
-                >
-                  {SORTABLE.has(c.key) ? (
-                    <button
-                      type="button"
-                      onClick={() => setSort(c.key)}
-                      className={cn(
-                        "transition-colors hover:text-foreground",
-                        sort === c.key && "text-foreground",
-                      )}
-                    >
-                      {c.label}
-                      {sort === c.key ? " ↓" : ""}
-                    </button>
-                  ) : (
-                    c.label
-                  )}
-                </th>
+                  label={c.label}
+                  sortKey={c.sortValue ? c.key : undefined}
+                  sort={sort}
+                  onToggle={toggle}
+                />
               ))}
             </tr>
           </thead>

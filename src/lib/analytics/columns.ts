@@ -95,13 +95,26 @@ export interface ColumnDef {
   render: (row: CampaignRow) => string;
   /** Draws attention when non-zero — the reference underlines Bounces. */
   emphasizeNonZero?: boolean;
+  /*
+   * The raw comparable value. PRESENT MEANS SORTABLE.
+   *
+   * It has to be separate from `render`, which returns a formatted string —
+   * "1 : 700" and "2.9d" do not compare numerically, and sorting on them would
+   * silently order by text.
+   *
+   * It is a property of the column rather than a list kept beside it, which is
+   * the bug this replaces: `SORTABLE` carried "positive", no column has that
+   * key (it is `sentimentPositive`), and so one of its five entries had never
+   * done anything. A definition-level field makes that unwritable.
+   */
+  sortValue?: (row: CampaignRow) => number | string | null;
 }
 
 export const COLUMNS: ColumnDef[] = [
   // Volume
-  { key: "sent", label: "Sent", group: "Volume", defaultVisible: true, render: (r) => fullNumber(r.sent) },
-  { key: "prospects", label: "Prospects", group: "Volume", defaultVisible: false, render: (r) => fullNumber(r.prospects) },
-  { key: "replies", label: "Replies", group: "Volume", defaultVisible: true, render: (r) => fullNumber(r.replies) },
+  { key: "sent", label: "Sent", group: "Volume", defaultVisible: true, render: (r) => fullNumber(r.sent), sortValue: (r) => r.sent },
+  { key: "prospects", label: "Prospects", group: "Volume", defaultVisible: false, render: (r) => fullNumber(r.prospects), sortValue: (r) => r.prospects },
+  { key: "replies", label: "Replies", group: "Volume", defaultVisible: true, render: (r) => fullNumber(r.replies), sortValue: (r) => r.replies },
   {
     key: "bounces",
     label: "Bounces",
@@ -112,10 +125,10 @@ export const COLUMNS: ColumnDef[] = [
   },
 
   // Rates
-  { key: "replyRate", label: "Reply %", group: "Rates", defaultVisible: true, render: (r) => percent(replyRate(r.replies, r.sent), 2) },
-  { key: "humanRate", label: "Human %", group: "Rates", defaultVisible: true, render: (r) => percent(humanRate(r.humanReplies, r.sent), 2) },
-  { key: "positiveRate", label: "Positive %", group: "Rates", defaultVisible: true, render: (r) => percent(positiveRate(r.positive, r.replies), 2) },
-  { key: "bounceRate", label: "Bounce %", group: "Rates", defaultVisible: false, render: (r) => percent(bounceRate(r.bounces, r.sent), 2) },
+  { key: "replyRate", label: "Reply %", group: "Rates", defaultVisible: true, render: (r) => percent(replyRate(r.replies, r.sent), 2), sortValue: (r) => replyRate(r.replies, r.sent) },
+  { key: "humanRate", label: "Human %", group: "Rates", defaultVisible: true, render: (r) => percent(humanRate(r.humanReplies, r.sent), 2), sortValue: (r) => humanRate(r.humanReplies, r.sent) },
+  { key: "positiveRate", label: "Positive %", group: "Rates", defaultVisible: true, render: (r) => percent(positiveRate(r.positive, r.replies), 2), sortValue: (r) => positiveRate(r.positive, r.replies) },
+  { key: "bounceRate", label: "Bounce %", group: "Rates", defaultVisible: false, render: (r) => percent(bounceRate(r.bounces, r.sent), 2), sortValue: (r) => bounceRate(r.bounces, r.sent) },
   /*
    * A "soft" bounce is a delay — a receiving server asking us to retry — and
    * EmailBison counts it in the same total as a permanent failure. Live data:
@@ -123,10 +136,10 @@ export const COLUMNS: ColumnDef[] = [
    * delays, so its real failure rate is a third lower than the headline. Hard
    * is the number that should drive suppression decisions.
    */
-  { key: "bouncesHard", label: "Hard", group: "Rates", defaultVisible: false, render: (r) => fullNumber(r.bouncesHard) },
-  { key: "bouncesSoft", label: "Soft (delay)", group: "Rates", defaultVisible: false, render: (r) => fullNumber(r.bouncesSoft) },
-  { key: "hardBounceRate", label: "Hard %", group: "Rates", defaultVisible: false, render: (r) => percent(bounceRate(r.bouncesHard, r.sent), 2) },
-  { key: "leadToEmail", label: "Lead:Email", group: "Rates", defaultVisible: true, render: (r) => ratio(leadToEmail(r.sent, r.positive)) },
+  { key: "bouncesHard", label: "Hard", group: "Rates", defaultVisible: false, render: (r) => fullNumber(r.bouncesHard), sortValue: (r) => r.bouncesHard },
+  { key: "bouncesSoft", label: "Soft (delay)", group: "Rates", defaultVisible: false, render: (r) => fullNumber(r.bouncesSoft), sortValue: (r) => r.bouncesSoft },
+  { key: "hardBounceRate", label: "Hard %", group: "Rates", defaultVisible: false, render: (r) => percent(bounceRate(r.bouncesHard, r.sent), 2), sortValue: (r) => bounceRate(r.bouncesHard, r.sent) },
+  { key: "leadToEmail", label: "Lead:Email", group: "Rates", defaultVisible: true, render: (r) => ratio(leadToEmail(r.sent, r.positive)), sortValue: (r) => leadToEmail(r.sent, r.positive) },
 
   /*
    * Reply sentiment — all three, at last.
@@ -139,18 +152,18 @@ export const COLUMNS: ColumnDef[] = [
    * A reply nobody has labelled yet counts in none of the three, which is why
    * they do not sum to Replies — and why that is correct rather than a gap.
    */
-  { key: "sentimentPositive", label: "+", group: "Reply Sentiment", defaultVisible: false, render: (r) => fullNumber(r.positive) },
-  { key: "sentimentNeutral", label: "~", group: "Reply Sentiment", defaultVisible: false, render: (r) => fullNumber(r.neutral) },
-  { key: "sentimentNegative", label: "−", group: "Reply Sentiment", defaultVisible: false, render: (r) => fullNumber(r.negative) },
+  { key: "sentimentPositive", label: "+", group: "Reply Sentiment", defaultVisible: false, render: (r) => fullNumber(r.positive), sortValue: (r) => r.positive },
+  { key: "sentimentNeutral", label: "~", group: "Reply Sentiment", defaultVisible: false, render: (r) => fullNumber(r.neutral), sortValue: (r) => r.neutral },
+  { key: "sentimentNegative", label: "−", group: "Reply Sentiment", defaultVisible: false, render: (r) => fullNumber(r.negative), sortValue: (r) => r.negative },
 
   // Reply source — EmailBison's own automated-reply heuristic.
-  { key: "sourceHuman", label: "Human", group: "Reply Source", defaultVisible: false, render: (r) => fullNumber(r.humanReplies) },
-  { key: "sourceBot", label: "Bot", group: "Reply Source", defaultVisible: false, render: (r) => fullNumber(r.botReplies) },
+  { key: "sourceHuman", label: "Human", group: "Reply Source", defaultVisible: false, render: (r) => fullNumber(r.humanReplies), sortValue: (r) => r.humanReplies },
+  { key: "sourceBot", label: "Bot", group: "Reply Source", defaultVisible: false, render: (r) => fullNumber(r.botReplies), sortValue: (r) => r.botReplies },
 
   // Timing
-  { key: "medianReply", label: "Median Reply", group: "Timing", defaultVisible: true, render: (r) => duration(r.medianReplySeconds) },
-  { key: "avgReply", label: "Avg Reply", group: "Timing", defaultVisible: false, render: (r) => duration(r.avgReplySeconds) },
-  { key: "medianFollowUp", label: "Median Follow-up", group: "Timing", defaultVisible: false, render: (r) => duration(r.medianFollowUpSeconds) },
+  { key: "medianReply", label: "Median Reply", group: "Timing", defaultVisible: true, render: (r) => duration(r.medianReplySeconds), sortValue: (r) => r.medianReplySeconds },
+  { key: "avgReply", label: "Avg Reply", group: "Timing", defaultVisible: false, render: (r) => duration(r.avgReplySeconds), sortValue: (r) => r.avgReplySeconds },
+  { key: "medianFollowUp", label: "Median Follow-up", group: "Timing", defaultVisible: false, render: (r) => duration(r.medianFollowUpSeconds), sortValue: (r) => r.medianFollowUpSeconds },
 
   /*
    * Events (WT §5.3): "so you can read outcomes alongside reply rates in one
@@ -161,13 +174,13 @@ export const COLUMNS: ColumnDef[] = [
    * of these", the same question Lead-to-Email answers for positives. DASH when
    * the campaign earned none, never a misleading 0 or Infinity.
    */
-  { key: "introductions", label: "Intros", group: "Events", defaultVisible: false, render: (r) => fullNumber(r.introductions) },
-  { key: "phoneScreens", label: "Phone Screens", group: "Events", defaultVisible: false, render: (r) => fullNumber(r.phoneScreens) },
-  { key: "interviews", label: "Interviews", group: "Events", defaultVisible: false, render: (r) => fullNumber(r.interviews) },
-  { key: "hires", label: "Hires", group: "Events", defaultVisible: false, render: (r) => fullNumber(r.hires) },
-  { key: "outcomesTotal", label: "Outcomes", group: "Events", defaultVisible: false, render: (r) => fullNumber(r.outcomesTotal) },
-  { key: "emailsPerIntro", label: "E:Intro", group: "Events", defaultVisible: false, render: (r) => ratio(leadToEmail(r.sent, r.introductions)) },
-  { key: "emailsPerHire", label: "E:Hire", group: "Events", defaultVisible: false, render: (r) => ratio(leadToEmail(r.sent, r.hires)) },
+  { key: "introductions", label: "Intros", group: "Events", defaultVisible: false, render: (r) => fullNumber(r.introductions), sortValue: (r) => r.introductions },
+  { key: "phoneScreens", label: "Phone Screens", group: "Events", defaultVisible: false, render: (r) => fullNumber(r.phoneScreens), sortValue: (r) => r.phoneScreens },
+  { key: "interviews", label: "Interviews", group: "Events", defaultVisible: false, render: (r) => fullNumber(r.interviews), sortValue: (r) => r.interviews },
+  { key: "hires", label: "Hires", group: "Events", defaultVisible: false, render: (r) => fullNumber(r.hires), sortValue: (r) => r.hires },
+  { key: "outcomesTotal", label: "Outcomes", group: "Events", defaultVisible: false, render: (r) => fullNumber(r.outcomesTotal), sortValue: (r) => r.outcomesTotal },
+  { key: "emailsPerIntro", label: "E:Intro", group: "Events", defaultVisible: false, render: (r) => ratio(leadToEmail(r.sent, r.introductions)), sortValue: (r) => leadToEmail(r.sent, r.introductions) },
+  { key: "emailsPerHire", label: "E:Hire", group: "Events", defaultVisible: false, render: (r) => ratio(leadToEmail(r.sent, r.hires)), sortValue: (r) => leadToEmail(r.sent, r.hires) },
 ];
 
 export const COLUMN_GROUPS: ColumnGroup[] = [
@@ -189,13 +202,5 @@ export const DEFAULT_VISIBLE = COLUMNS.filter((c) => c.defaultVisible).map((c) =
 export const COLUMN_PREFS_VERSION = 1;
 export const COLUMN_PREFS_KEY = "bsa.campaign-columns.v1";
 
-/** Sort keys the server understands. Anything else falls back to `sent`. */
-export const SORTABLE = new Set([
-  "sent",
-  "prospects",
-  "replies",
-  "positive",
-  "bounces",
-]);
 
 export { compactNumber };

@@ -4,6 +4,8 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { SortableHeader } from "./sortable-header";
+import { sortRows, useTableSort } from "@/hooks/use-table-sort";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -43,10 +45,8 @@ interface Response {
   count: number;
 }
 
-type SortKey = keyof Pick<
-  ClientRow,
-  "sent" | "prospects" | "replies" | "positive" | "bounces" | "replyRate" | "positiveRate"
->;
+/* Every column is sortable now, including the two that never were. */
+type SortKey = keyof ClientRow;
 
 /*
  * Per-client rollup. Values use fullNumber (exact, comparable down a column),
@@ -57,7 +57,8 @@ export function ClientsView() {
   const { toQueryString } = useAnalyticsFilters();
   const qs = toQueryString();
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<SortKey>("sent");
+  // The server returns clients by volume; the third click goes back to that.
+  const { sort, toggle } = useTableSort();
 
   const query = useQuery<Response>({
     queryKey: ["clients", qs],
@@ -73,7 +74,7 @@ export function ClientsView() {
     const filtered = search
       ? all.filter((r) => r.name.toLowerCase().includes(search.toLowerCase()))
       : all;
-    return [...filtered].sort((a, b) => (b[sort] ?? 0) - (a[sort] ?? 0));
+    return sortRows(filtered, sort, (row, key) => row[key as SortKey] ?? null);
   }, [query.data, search, sort]);
 
   const totals = query.data?.totals;
@@ -85,9 +86,12 @@ export function ClientsView() {
     { key: "positive", label: "Positive", render: (r) => fullNumber(r.positive) },
     { key: "replyRate", label: "Reply %", render: (r) => percent(r.replyRate, 2) },
     { key: "positiveRate", label: "Positive %", render: (r) => percent(r.positiveRate, 2) },
-    { key: null, label: "Email/Lead", render: (r) => ratio(r.leadToEmail) },
+    // Was unsortable, for no reason other than the old type only admitted
+    // seven keys. "Which client costs the most sending per positive" is one of
+    // the more useful questions this table can answer.
+    { key: "leadToEmail", label: "Email/Lead", render: (r) => ratio(r.leadToEmail) },
     { key: "bounces", label: "Bounces", render: (r) => fullNumber(r.bounces) },
-    { key: null, label: "Median Reply", render: (r) => duration(r.medianReplySeconds) },
+    { key: "medianReplySeconds", label: "Median Reply", render: (r) => duration(r.medianReplySeconds) },
   ];
 
   if (query.isLoading) return <Skeleton className="h-72 w-full" />;
@@ -117,23 +121,13 @@ export function ClientsView() {
                 Client
               </th>
               {columns.map((c) => (
-                <th key={c.label} className="px-3 py-2 text-right font-medium">
-                  {c.key ? (
-                    <button
-                      type="button"
-                      onClick={() => setSort(c.key!)}
-                      className={cn(
-                        "transition-colors hover:text-foreground",
-                        sort === c.key && "text-foreground",
-                      )}
-                    >
-                      {c.label}
-                      {sort === c.key ? " ↓" : ""}
-                    </button>
-                  ) : (
-                    c.label
-                  )}
-                </th>
+                <SortableHeader
+                  key={c.label}
+                  label={c.label}
+                  sortKey={c.key ?? undefined}
+                  sort={sort}
+                  onToggle={toggle}
+                />
               ))}
             </tr>
           </thead>
