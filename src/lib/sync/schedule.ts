@@ -62,6 +62,10 @@ export const SCHEDULE = [
   // often, and Positive is the number people watch during a working day.
   { job: "sync-reply-labels", everyMinutes: 30 },
   { job: "sync-reply-labels-deep", dailyAtUtcHour: 10 },
+  // ~420 pages per day of window. The frequent one keeps membership current;
+  // the nightly deep re-reads a week so late opens and clicks land.
+  { job: "sync-campaign-leads", everyMinutes: 180 },
+  { job: "sync-campaign-leads-deep", dailyAtUtcHour: 11 },
 ] as const satisfies readonly ScheduleEntry[];
 
 /*

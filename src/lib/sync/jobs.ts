@@ -1380,6 +1380,238 @@ export function makeReplyLabelsJob(full: boolean): JobFn {
   };
 }
 
+
+/**
+ * Campaign lead membership, from the send feed.
+ *
+ * WHAT THIS BUYS. Before it, `leads` held only people who had replied — 6,700 of
+ * ~69,800 — and nothing recorded which leads belonged to which campaign. There
+ * is no EmailBison endpoint for that: the lead list is workspace-wide and
+ * carries no campaign. Every SEND names both, and carries the whole lead object
+ * with its custom variables, so one walk gives membership and lead detail with
+ * no per-lead call.
+ *
+ * SHARDED PER CAMPAIGN, four at a time. A cursor is inherently serial, so one
+ * global chain would take about an hour against a 6.7 req/s ceiling; four chains
+ * saturate that ceiling and finish in about forty. Sharding is also the only
+ * version with a resume point — one cursor per campaign, persisted after every
+ * page, so a killed run loses one page rather than 1,239.
+ *
+ * RAW SENDS, NOT A RUNNING TOTAL. opens/clicks accrue for days after sent_at, so
+ * a summed rollup cannot converge on a re-read. See 053.
+ */
+export function makeCampaignLeadsJob(windowDays: number | null, pageBudget: number): JobFn {
+  return async ({ teamId }): Promise<JobResult> => {
+    const eb = createEmailBisonClient();
+    const sb = getSupabase();
+
+    const campaigns = await scopedCampaigns(teamId);
+    const { data: cursors } = await sb
+      .from("campaign_send_sync")
+      .select("campaign_id, backfill_cursor, backfilled_at")
+      .eq("team_id", teamId);
+    const stateBy = new Map((cursors ?? []).map((c) => [c.campaign_id, c]));
+
+    const since = windowDays == null ? null : isoDaysAgo(windowDays);
+    let pagesRead = 0;
+    let apiCalls = 0;
+    let backfillRemaining = 0;
+    let sendsWritten = 0;
+    let leadsWritten = 0;
+    let attrsWritten = 0;
+    const touched = new Set<number>();
+
+    /*
+     * FLUSHED PER CAMPAIGN, and the ordering matters.
+     *
+     * The first version accumulated every row and wrote once at the end, which
+     * is wrong twice over: it holds 258,000 rows in memory during a backfill,
+     * and it stamps a campaign "backfilled" as its cursor runs out while its
+     * rows are still unsaved. A crash between those two points would leave the
+     * campaign marked done with nothing stored, and nothing would ever re-fetch
+     * it — the exact failure the watermark discipline exists to prevent.
+     *
+     * So: write the rows, THEN mark the campaign finished. A crash re-walks a
+     * campaign, which is free because every write is an idempotent upsert.
+     */
+    const flush = async (
+      campaignId: number,
+      sends: Record<string, unknown>[],
+      leadRows: Map<number, Record<string, unknown>>,
+      attrRows: Map<string, Record<string, unknown>>,
+    ) => {
+      if (!sends.length) return;
+      // Leads before attributes (foreign key), both before the sends.
+      await chunkUpsert("leads", [...leadRows.values()], "id");
+      await chunkUpsert("lead_attributes", [...attrRows.values()], "lead_id,name");
+      await chunkUpsert("campaign_lead_sends", sends, "id", 1000);
+      sendsWritten += sends.length;
+      leadsWritten += leadRows.size;
+      attrsWritten += attrRows.size;
+      touched.add(campaignId);
+    };
+
+    await pool(campaigns, 4, async (campaign) => {
+      const state = stateBy.get(campaign.id);
+      const backfilling = !state?.backfilled_at;
+      if (!backfilling && pagesRead >= pageBudget) return;
+
+      let cursor = backfilling ? (state?.backfill_cursor ?? null) : null;
+      // A backfill reads everything; a steady run only the trailing window.
+      const window = backfilling ? null : since;
+
+      const sends: Record<string, unknown>[] = [];
+      const leadRows = new Map<number, Record<string, unknown>>();
+      const attrRows = new Map<string, Record<string, unknown>>();
+
+      for (;;) {
+        if (pagesRead >= pageBudget) {
+          if (backfilling) backfillRemaining++;
+          // Save the partial walk and leave the cursor where it is, so the next
+          // run resumes rather than repeating it.
+          await flush(campaign.id, sends, leadRows, attrRows);
+          await sb.from("campaign_send_sync").upsert(
+            {
+              campaign_id: campaign.id,
+              team_id: teamId,
+              backfill_cursor: cursor,
+              backfilled_at: null,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "campaign_id" },
+          );
+          return;
+        }
+
+        const page = await eb.getSentEmailsPage(campaign.id, cursor, window);
+        apiCalls++;
+        pagesRead++;
+
+        for (const row of page.data ?? []) {
+          const leadId = row.lead?.id;
+          if (!leadId) continue;
+          touched.add(campaign.id);
+
+          sends.push({
+            id: row.id,
+            team_id: teamId,
+            campaign_id: campaign.id,
+            lead_id: leadId,
+            sequence_step_id: row.sequence_step_id ?? null,
+            sender_email_id: row.sender_email?.id ?? null,
+            sent_at: row.sent_at ?? null,
+            thread_reply: row.thread_reply ?? null,
+            opens: Number(row.opens ?? 0),
+            unique_opens: Number(row.unique_opens ?? 0),
+            clicks: Number(row.clicks ?? 0),
+            synced_at: new Date().toISOString(),
+          });
+
+          /*
+           * The lead, from the same row. This is what lifts `leads` from
+           * repliers-only to everyone contacted — and it improves the Replies
+           * view's breakdowns for free, since they read the same table.
+           */
+          leadRows.set(leadId, {
+            id: leadId,
+            team_id: teamId,
+            email: row.lead?.email ?? null,
+            first_name: row.lead?.first_name ?? null,
+            last_name: row.lead?.last_name ?? null,
+            company: row.lead?.company ?? null,
+            title: row.lead?.title ?? null,
+            status: row.lead?.status ?? null,
+            eb_created_at: row.lead?.created_at ?? null,
+            eb_updated_at: row.lead?.updated_at ?? null,
+            synced_at: new Date().toISOString(),
+          });
+
+          for (const v of row.lead?.custom_variables ?? []) {
+            if (!v?.name) continue;
+            const name = normaliseAttributeName(v.name);
+            if (!name) continue;
+            attrRows.set(`${leadId}\u0000${name}`, {
+              lead_id: leadId,
+              team_id: teamId,
+              name,
+              value: v.value ?? null,
+              value_numeric: NUMERIC_LEAD_ATTRIBUTES.has(name)
+                ? parseNumericValue(v.value)
+                : null,
+            });
+          }
+        }
+
+        const next = page.meta?.next_cursor ?? null;
+        if (!next || next === cursor) {
+          // End of this campaign: rows first, THEN the finished stamp.
+          await flush(campaign.id, sends, leadRows, attrRows);
+          await sb.from("campaign_send_sync").upsert(
+            {
+              campaign_id: campaign.id,
+              team_id: teamId,
+              backfill_cursor: null,
+              backfilled_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "campaign_id" },
+          );
+          break;
+        }
+        cursor = next;
+
+        /*
+         * Flush every 40 pages (600 rows) mid-walk so a 1,239-page campaign
+         * neither holds everything in memory nor loses it all to one failure.
+         * The cursor moves with it, so a resume picks up where the rows stop.
+         */
+        if (sends.length >= 600) {
+          await flush(campaign.id, sends, leadRows, attrRows);
+          sends.length = 0;
+          leadRows.clear();
+          attrRows.clear();
+          if (backfilling) {
+            await sb.from("campaign_send_sync").upsert(
+              {
+                campaign_id: campaign.id,
+                team_id: teamId,
+                backfill_cursor: cursor,
+                backfilled_at: null,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "campaign_id" },
+            );
+          }
+        }
+      }
+    });
+
+    if (touched.size) {
+      const { error } = await sb.rpc("refresh_campaign_leads", {
+        p_team_id: teamId,
+        p_campaign_ids: [...touched],
+      });
+      if (error) throw new Error(`refresh_campaign_leads: ${error.message}`);
+    }
+
+    return {
+      rowsWritten: sendsWritten,
+      apiCalls,
+      detail: {
+        pagesRead,
+        sends: sendsWritten,
+        leads: leadsWritten,
+        attributes: attrsWritten,
+        campaignsTouched: touched.size,
+        // Campaigns still mid-backfill when the page budget ran out. Reported so
+        // "is it finished yet" is answerable without reading the cursor table.
+        backfillRemaining,
+        mode: windowDays == null ? "backfill" : `${windowDays}d window`,
+      },
+    };
+  };
+}
+
 export const JOBS = {
   "sync-entities": syncEntities,
   "sync-steps": syncSteps,
@@ -1403,6 +1635,15 @@ export const JOBS = {
   // one or two pages. The nightly full walk catches anything the cursor missed.
   "sync-reply-labels": makeReplyLabelsJob(false),
   "sync-reply-labels-deep": makeReplyLabelsJob(true),
+  /*
+   * The page budget is set by STALE_LOCK_MS in runner.ts: at ~6.7 req/s, 3,000
+   * pages is about 7.5 minutes, comfortably inside the 10-minute lock so a
+   * concurrent tick never steals it and runs a second copy.
+   */
+  "sync-campaign-leads": makeCampaignLeadsJob(2, 3000),
+  // The wide window exists to re-read opens and clicks that accrued after the
+  // send — the thing a summed rollup could never have picked up.
+  "sync-campaign-leads-deep": makeCampaignLeadsJob(7, 3000),
 } satisfies Record<string, JobFn>;
 
 export const JOB_NAMES = Object.keys(JOBS);

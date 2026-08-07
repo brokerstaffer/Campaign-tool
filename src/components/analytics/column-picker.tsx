@@ -35,8 +35,17 @@ import { cn } from "@/lib/utils";
  * getSnapshot MUST return a referentially stable value or React re-renders
  * forever — hence the cache keyed on the raw string.
  */
-let cachedRaw: string | null = null;
-let cachedValue: string[] = DEFAULT_VISIBLE;
+/*
+ * KEYED BY PREFS KEY, not a single pair.
+ *
+ * This was one `cachedRaw`/`cachedValue` pair shared by every caller, which was
+ * fine while exactly one table had a picker. With two — the Campaigns table and
+ * the campaign Leads tab — each mounted picker would overwrite the other's
+ * cache on every read, so getSnapshot would return a fresh array each time.
+ * React requires a referentially stable snapshot, and an unstable one does not
+ * merely misbehave: it re-renders forever.
+ */
+const caches = new Map<string, { raw: string | null; value: string[] }>();
 
 function subscribe(onChange: () => void) {
   // `storage` fires for OTHER tabs, which is exactly the cross-tab sync we want.
@@ -44,44 +53,48 @@ function subscribe(onChange: () => void) {
   return () => window.removeEventListener("storage", onChange);
 }
 
-function getSnapshot(): string[] {
+function readPrefs(key: string, version: number, defaults: string[]): string[] {
   let raw: string | null = null;
   try {
-    raw = localStorage.getItem(COLUMN_PREFS_KEY);
+    raw = localStorage.getItem(key);
   } catch {
-    return DEFAULT_VISIBLE; // private browsing
+    return defaults; // private browsing
   }
-  if (raw === cachedRaw) return cachedValue;
+  const cached = caches.get(key);
+  if (cached && raw === cached.raw) return cached.value;
 
-  cachedRaw = raw;
+  let value = defaults;
   try {
     const parsed = raw ? JSON.parse(raw) : null;
     // A version bump discards the stored set, so adding a column later can't
     // leave it permanently invisible for anyone who already saved a selection.
-    cachedValue =
-      parsed?.version === COLUMN_PREFS_VERSION && Array.isArray(parsed.visible)
-        ? parsed.visible
-        : DEFAULT_VISIBLE;
+    if (parsed?.version === version && Array.isArray(parsed.visible)) {
+      value = parsed.visible;
+    }
   } catch {
-    cachedValue = DEFAULT_VISIBLE;
+    /* corrupt entry — fall back to defaults */
   }
-  return cachedValue;
+  caches.set(key, { raw, value });
+  return value;
 }
 
-const getServerSnapshot = (): string[] => DEFAULT_VISIBLE;
-
-export function useColumnPrefs() {
-  const stored = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+export function useColumnPrefs(
+  key: string = COLUMN_PREFS_KEY,
+  version: number = COLUMN_PREFS_VERSION,
+  defaults: string[] = DEFAULT_VISIBLE,
+) {
+  const stored = useSyncExternalStore(
+    subscribe,
+    () => readPrefs(key, version, defaults),
+    () => defaults,
+  );
   // Local echo so a click is instant rather than waiting on a storage round trip.
   const [override, setOverride] = useState<string[] | null>(null);
 
   function update(next: string[]) {
     setOverride(next);
     try {
-      localStorage.setItem(
-        COLUMN_PREFS_KEY,
-        JSON.stringify({ version: COLUMN_PREFS_VERSION, visible: next }),
-      );
+      localStorage.setItem(key, JSON.stringify({ version, visible: next }));
     } catch {
       /* private browsing — the session still works, it just won't persist */
     }
@@ -93,9 +106,13 @@ export function useColumnPrefs() {
 export function ColumnPicker({
   visible,
   onChange,
+  columns = COLUMNS,
+  groups = COLUMN_GROUPS,
 }: {
   visible: string[];
   onChange: (next: string[]) => void;
+  columns?: Array<{ key: string; label: string; group: string }>;
+  groups?: readonly string[];
 }) {
   const [search, setSearch] = useState("");
 
@@ -133,7 +150,7 @@ export function ColumnPicker({
               variant="ghost"
               size="sm"
               className="h-6 flex-1 text-xs"
-              onClick={() => onChange(COLUMNS.map((c) => c.key))}
+              onClick={() => onChange(columns.map((c) => c.key))}
             >
               Show all
             </Button>
@@ -151,8 +168,8 @@ export function ColumnPicker({
         </div>
 
         <div className="max-h-72 overflow-y-auto p-1">
-          {COLUMN_GROUPS.map((group) => {
-            const items = COLUMNS.filter(
+          {groups.map((group) => {
+            const items = columns.filter(
               (c) => c.group === group && matches(c.label),
             );
             if (!items.length) return null;

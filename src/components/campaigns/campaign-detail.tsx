@@ -15,6 +15,7 @@ import {
   type SequenceStep as Step,
 } from "@/components/campaigns/sequence-view";
 import { CopyTagsPanel } from "@/components/campaigns/copy-tags-panel";
+import { CampaignLeads } from "@/components/campaigns/campaign-leads";
 import { OfferPicker } from "@/components/campaigns/offer-picker";
 import { fullNumber, percent } from "@/lib/analytics/format.ts";
 import { STATUS_TONE, canApply, isKnownStatus } from "@/lib/campaigns/status.ts";
@@ -83,7 +84,7 @@ interface DetailResponse {
  * and which offer this campaign sells — existed only nested inside Sequence,
  * where you had to expand a step to reach it. Its own tab, per the spec.
  */
-const TABS = ["Overview", "Sequence", "Copy & Offer", "Settings", "Activity"] as const;
+const TABS = ["Overview", "Leads", "Sequence", "Copy & Offer", "Settings", "Activity"] as const;
 type Tab = (typeof TABS)[number];
 
 export function CampaignDetail({ id }: { id: number }) {
@@ -260,6 +261,7 @@ export function CampaignDetail({ id }: { id: number }) {
 
       <div className="min-h-0 flex-1 overflow-auto p-6">
         {tab === "Overview" ? <Overview campaign={campaign} /> : null}
+        {tab === "Leads" ? <CampaignLeads campaignId={campaign.id} /> : null}
         {tab === "Sequence" ? (
           <Sequence
             steps={sequence}

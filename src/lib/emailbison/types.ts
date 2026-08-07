@@ -241,3 +241,26 @@ export interface EBLead {
   created_at?: string | null;
   updated_at?: string | null;
 }
+
+/**
+ * One sent email from `/api/scheduled-emails?status=sent`.
+ *
+ * The nested `lead` is the whole lead record — probed on 150 rows, every one
+ * carried it with its custom_variables — which is what makes this feed the
+ * cheapest source of both campaign membership and lead detail.
+ *
+ * `opens` / `clicks` are MUTABLE: they accrue for days after `sent_at`, which
+ * is why the sync stores raw send rows rather than summing into a rollup.
+ */
+export interface EBSentEmail {
+  id: number;
+  campaign_id?: number | null;
+  sequence_step_id?: number | null;
+  thread_reply?: boolean | null;
+  sent_at?: string | null;
+  opens?: number | null;
+  unique_opens?: number | null;
+  clicks?: number | null;
+  lead?: EBLead | null;
+  sender_email?: { id?: number | null } | null;
+}

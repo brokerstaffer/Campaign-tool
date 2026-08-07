@@ -11,6 +11,7 @@ import type {
   EBLead,
   EBReply,
   EBSenderEmail,
+  EBSentEmail,
   EBSequenceStepsResponse,
   EBWorkspace,
   Paginated,
@@ -394,6 +395,42 @@ export class EmailBisonClient {
     return this.request<Paginated<EBReply>>(
       `/api/campaigns/${campaignId}/replies?${query.toString()}`,
     );
+  }
+
+  /**
+   * One page of a campaign's SENT emails, cursor-paged.
+   *
+   * The only source of campaign lead membership. EmailBison exposes no endpoint
+   * that lists a campaign's leads — the lead list is workspace-wide and carries
+   * no campaign — but every send names both, and carries the whole lead object
+   * including its custom variables, so one walk gives membership and lead
+   * details together with no per-lead call.
+   *
+   * CURSOR, not pages, for the same reason as getCampaignRepliesPage: page mode
+   * caps at 1,000 pages of 15 and stops silently, and campaign 55 alone has
+   * 18,575 sends. Probed 2026-08-06: campaign_ids[], pagination_type=cursor and
+   * the scheduled_date_local filter all compose in one request.
+   *
+   * Not routed through fetchAllPages — that accumulates every row in memory and
+   * offers no cursor to persist, which is exactly what a 1,239-page campaign and
+   * a resumable backfill need.
+   */
+  async getSentEmailsPage(
+    campaignId: number,
+    cursor: string | null = null,
+    sentOnOrAfter: string | null = null,
+  ) {
+    const query = new URLSearchParams({
+      status: "sent",
+      pagination_type: "cursor",
+    });
+    query.set("campaign_ids[]", String(campaignId));
+    if (cursor) query.set("cursor", cursor);
+    if (sentOnOrAfter) {
+      query.set("scheduled_date_local[criteria]", ">=");
+      query.set("scheduled_date_local[value]", sentOnOrAfter);
+    }
+    return this.request<Paginated<EBSentEmail>>(`/api/scheduled-emails?${query.toString()}`);
   }
 
   /**
