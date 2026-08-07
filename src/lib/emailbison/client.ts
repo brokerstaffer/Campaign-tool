@@ -1,4 +1,4 @@
-import { limited } from "./rate-limit.ts";
+import { limited, reportRateLimit } from "./rate-limit.ts";
 import { assertApplied, EmailBisonApiError } from "./errors.ts";
 
 // Re-exported so existing importers keep working.
@@ -71,6 +71,14 @@ export class EmailBisonClient {
         // Caching here would silently serve stale numbers.
         cache: "no-store",
       });
+
+      /*
+       * Report the budget back to the gate on EVERY response, including error
+       * ones — a 429 is exactly when the number matters most. The gate wraps an
+       * opaque function and cannot see headers itself, so this is the only place
+       * that can tell it how much room is left.
+       */
+      reportRateLimit(response.headers);
 
       if (!response.ok) {
         let body: unknown;

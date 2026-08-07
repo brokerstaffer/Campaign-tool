@@ -1413,7 +1413,34 @@ export function makeCampaignLeadsJob(windowDays: number | null, pageBudget: numb
     const stateBy = new Map((cursors ?? []).map((c) => [c.campaign_id, c]));
 
     const since = windowDays == null ? null : isoDaysAgo(windowDays);
+
+    /*
+     * WHICH CAMPAIGNS ARE WORTH ASKING ABOUT.
+     *
+     * A steady run used to open a cursor on all 105 campaigns, including the 85
+     * that have not sent anything in the window — 85 requests to be told
+     * nothing happened, every three hours, forever.
+     *
+     * campaign_day_stats already knows who sent and when, it is synced every
+     * three hours anyway, and reading it costs one query. Measured: 20 of 105
+     * campaigns sent in the last two days.
+     *
+     * A campaign still mid-backfill is never skipped — it has history to fetch
+     * whether or not it sent this week.
+     */
+    let recentlyActive: Set<number> | null = null;
+    if (since) {
+      const { data: active } = await sb
+        .from("campaign_day_stats")
+        .select("campaign_id")
+        .eq("team_id", teamId)
+        .gte("stat_date", since)
+        .gt("emails_sent", 0);
+      recentlyActive = new Set((active ?? []).map((r) => r.campaign_id));
+    }
+
     let pagesRead = 0;
+    let skippedQuiet = 0;
     let apiCalls = 0;
     let backfillRemaining = 0;
     let sendsWritten = 0;
@@ -1442,19 +1469,41 @@ export function makeCampaignLeadsJob(windowDays: number | null, pageBudget: numb
     ) => {
       if (!sends.length) return;
       // Leads before attributes (foreign key), both before the sends.
-      await chunkUpsert("leads", [...leadRows.values()], "id");
-      await chunkUpsert("lead_attributes", [...attrRows.values()], "lead_id,name");
-      await chunkUpsert("campaign_lead_sends", sends, "id", 1000);
+      /*
+       * Chunk sizes matter more here than anywhere else in the sync. Each lead
+       * carries twelve custom variables, so a 600-row flush wrote ~7,200
+       * attribute rows — fifteen sequential round trips to Supabase, in the
+       * middle of the walk, while no API request was in flight. Measured at
+       * roughly half the wall clock. Bigger chunks turn eighteen round trips
+       * into four.
+       */
+      await chunkUpsert("leads", [...leadRows.values()], "id", 2000);
+      await chunkUpsert("lead_attributes", [...attrRows.values()], "lead_id,name", 4000);
+      await chunkUpsert("campaign_lead_sends", sends, "id", 2000);
       sendsWritten += sends.length;
       leadsWritten += leadRows.size;
       attrsWritten += attrRows.size;
       touched.add(campaignId);
     };
 
-    await pool(campaigns, 4, async (campaign) => {
+    /*
+     * TWELVE, not four, and this is what actually governs the speed.
+     *
+     * A cursor is serial within a campaign, so the number of campaigns walked at
+     * once IS the number of requests in flight. The gate allows 12; a pool of 4
+     * meant it could never see more than 4, and raising the gate alone changed
+     * nothing — measured before and after, both ~4.8 req/s.
+     */
+    await pool(campaigns, 12, async (campaign) => {
       const state = stateBy.get(campaign.id);
       const backfilling = !state?.backfilled_at;
       if (!backfilling && pagesRead >= pageBudget) return;
+
+      // Nothing sent in the window and nothing left to backfill — do not ask.
+      if (!backfilling && recentlyActive && !recentlyActive.has(campaign.id)) {
+        skippedQuiet++;
+        return;
+      }
 
       let cursor = backfilling ? (state?.backfill_cursor ?? null) : null;
       // A backfill reads everything; a steady run only the trailing window.
@@ -1561,11 +1610,13 @@ export function makeCampaignLeadsJob(windowDays: number | null, pageBudget: numb
         cursor = next;
 
         /*
-         * Flush every 40 pages (600 rows) mid-walk so a 1,239-page campaign
+         * Flush every 100 pages (1,500 rows) mid-walk so a 1,239-page campaign
          * neither holds everything in memory nor loses it all to one failure.
          * The cursor moves with it, so a resume picks up where the rows stop.
          */
-        if (sends.length >= 600) {
+        // 1,500 rather than 600: fewer, larger flushes amortise the write cost
+        // over more pages without holding an unbounded buffer.
+        if (sends.length >= 1500) {
           await flush(campaign.id, sends, leadRows, attrRows);
           sends.length = 0;
           leadRows.clear();
@@ -1603,6 +1654,8 @@ export function makeCampaignLeadsJob(windowDays: number | null, pageBudget: numb
         leads: leadsWritten,
         attributes: attrsWritten,
         campaignsTouched: touched.size,
+        // Campaigns that sent nothing in the window, so were never asked.
+        skippedQuiet,
         // Campaigns still mid-backfill when the page budget ran out. Reported so
         // "is it finished yet" is answerable without reading the cursor table.
         backfillRemaining,

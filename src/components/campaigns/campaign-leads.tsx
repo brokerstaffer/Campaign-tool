@@ -83,6 +83,20 @@ export function CampaignLeads({ campaignId }: { campaignId: number }) {
     params.set("dir", sort.dir);
   }
 
+  /*
+   * Keyed on the campaign alone, so the status counts survive paging, sorting
+   * and searching instead of being recomputed with every one of them.
+   */
+  const facetQuery = useQuery<{ facets: Array<{ status: string; leads: number }> }>({
+    queryKey: ["campaign-lead-facets", campaignId],
+    queryFn: async () => {
+      const response = await fetch(`/api/campaigns/${campaignId}/leads?facets=1&page=1`);
+      if (!response.ok) throw new Error("Could not load lead counts");
+      return response.json();
+    },
+    staleTime: 5 * 60_000,
+  });
+
   const { data, isFetching, isLoading } = useQuery<Response>({
     queryKey: ["campaign-leads", campaignId, params.toString()],
     queryFn: async () => {
@@ -98,7 +112,8 @@ export function CampaignLeads({ campaignId }: { campaignId: number }) {
   const rows = data?.rows ?? [];
   const total = data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / (data?.pageSize ?? 50)));
-  const facetTotal = (data?.facets ?? []).reduce((n, f) => n + Number(f.leads), 0);
+  const facets = facetQuery.data?.facets ?? [];
+  const facetTotal = facets.reduce((n, f) => n + Number(f.leads), 0);
 
   return (
     <div className="space-y-3">
@@ -126,7 +141,7 @@ export function CampaignLeads({ campaignId }: { campaignId: number }) {
           >
             All {facetTotal ? fullNumber(facetTotal) : ""}
           </button>
-          {(data?.facets ?? []).map((f) => (
+          {facets.map((f) => (
             <button
               key={f.status}
               type="button"
