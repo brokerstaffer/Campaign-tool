@@ -5,6 +5,8 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { compactNumber, fullNumber, percent } from "@/lib/analytics/format.ts";
+import { SortableHeader } from "@/components/analytics/sortable-header";
+import { useTableSort } from "@/hooks/use-table-sort";
 import { cn } from "@/lib/utils";
 
 /*
@@ -131,12 +133,21 @@ function Bounce({ rate }: { rate: number | null }) {
 export function InfrastructureView() {
   const [view, setView] = useState<View>("domain");
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState("sent");
+  /*
+   * Server-side, because this list is paged — sorting the 100 rows the browser
+   * holds out of 1,470 inboxes would look exactly like sorting the estate and
+   * name the wrong worst inbox. p_sort/p_dir travel to the RPC.
+   */
+  const { sort, toggle } = useTableSort();
 
   const { data, isFetching } = useQuery<Response>({
-    queryKey: ["infrastructure", view, search, sort],
+    queryKey: ["infrastructure", view, search, sort?.key ?? "", sort?.dir ?? ""],
     queryFn: async () => {
-      const params = new URLSearchParams({ view, sort });
+      const params = new URLSearchParams({ view });
+      if (sort) {
+        params.set("sort", sort.key);
+        params.set("dir", sort.dir);
+      }
       if (search) params.set("q", search);
       const response = await fetch(`/api/infrastructure?${params}`);
       if (!response.ok) throw new Error("Could not load the sending estate");
@@ -405,16 +416,7 @@ export function InfrastructureView() {
                     className="h-9 rounded-lg pl-9 text-sm"
                   />
                 </div>
-                <select
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value)}
-                  aria-label="Sort inboxes"
-                  className="h-9 rounded-lg border bg-background px-2.5 text-sm"
-                >
-                  <option value="sent">Most sent</option>
-                  <option value="bounce_rate">Worst bounce rate</option>
-                  <option value="reply_rate">Best reply rate</option>
-                </select>
+
               </>
             ) : null}
 
@@ -435,20 +437,22 @@ export function InfrastructureView() {
               <tr className="border-b text-left text-xs text-muted-foreground">
                 {rowsView === "inbox" ? (
                   <>
-                    <th className="w-[24%] px-5 py-2.5 font-medium">{nameHeader}</th>
-                    <th className="w-[13%] px-3 py-2.5 font-medium">Mailbox</th>
-                    <th className="w-[14%] px-3 py-2.5 font-medium">Provider</th>
+                    <SortableHeader label={nameHeader} sortKey="domain" align="left" sort={sort} onToggle={toggle} className="w-[24%] px-5 py-2.5" />
+                    <SortableHeader label="Mailbox" sortKey="email" align="left" sort={sort} onToggle={toggle} className="w-[13%] py-2.5" />
+                    <SortableHeader label="Provider" sortKey="provider" align="left" sort={sort} onToggle={toggle} className="w-[14%] py-2.5" />
                   </>
                 ) : (
                   <>
-                    <th className="w-[25%] px-5 py-2.5 font-medium">{nameHeader}</th>
-                    <th className="w-[11%] px-3 py-2.5 text-right font-medium">Inboxes</th>
+                    {/* The domain and provider rollups had no sort control at
+                        all — the dropdown was rendered only on the inbox view. */}
+                    <SortableHeader label={nameHeader} align="left" sort={sort} onToggle={toggle} className="w-[25%] px-5 py-2.5" />
+                    <SortableHeader label="Inboxes" sortKey="inboxes" sort={sort} onToggle={toggle} className="w-[11%] py-2.5" />
                   </>
                 )}
-                <th className="w-[12%] px-3 py-2.5 text-right font-medium">Sent</th>
-                <th className="w-[12%] px-3 py-2.5 text-right font-medium">Bounced</th>
-                <th className="w-[12%] px-3 py-2.5 text-right font-medium">Reply&nbsp;%</th>
-                <th className="px-5 py-2.5 text-right font-medium">Bounce rate</th>
+                <SortableHeader label="Sent" sortKey="sent" sort={sort} onToggle={toggle} className="w-[12%] py-2.5" />
+                <SortableHeader label="Bounced" sortKey="bounced" sort={sort} onToggle={toggle} className="w-[12%] py-2.5" />
+                <SortableHeader label={<>Reply&nbsp;%</>} sortKey="reply_rate" sort={sort} onToggle={toggle} className="w-[12%] py-2.5" />
+                <SortableHeader label="Bounce rate" sortKey="bounce_rate" sort={sort} onToggle={toggle} className="px-5 py-2.5" />
               </tr>
             </thead>
             <tbody className="divide-y">

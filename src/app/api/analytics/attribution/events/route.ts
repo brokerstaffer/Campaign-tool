@@ -66,7 +66,9 @@ export async function GET(request: NextRequest) {
         p_client_ids: filters.clientIds.length ? filters.clientIds : null,
         p_search: search,
         p_limit: PAGE_SIZE,
-        p_offset: (page - 1) * PAGE_SIZE,
+        p_sort: request.nextUrl.searchParams.get("sort"),
+      p_dir: request.nextUrl.searchParams.get("dir") === "asc" ? "asc" : "desc",
+      p_offset: (page - 1) * PAGE_SIZE,
       }),
       sb.rpc("analytics_outcome_facets", {
         p_team_id: teamId,

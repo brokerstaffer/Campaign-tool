@@ -573,14 +573,26 @@ function Events() {
     return () => clearTimeout(timer);
   }, [search]);
 
+  /*
+   * Server-side, because this list is paged. Sorting the 50 rows the browser
+   * holds out of 2,000 would reorder one page while looking like it reordered
+   * the list — the top row would claim to be the oldest outcome on record when
+   * it is only the oldest of the fifty on screen.
+   */
+  const { sort, toggle } = useTableSort();
+
   const params = useMemo(() => {
     const next = new URLSearchParams(queryString);
     next.set("page", String(page));
     if (debounced) next.set("q", debounced);
     if (type) next.set("types", type);
     if (platform) next.set("platforms", platform);
+    if (sort) {
+      next.set("sort", sort.key);
+      next.set("dir", sort.dir);
+    }
     return next;
-  }, [queryString, page, debounced, type, platform]);
+  }, [queryString, page, debounced, type, platform, sort]);
 
   const { data, isFetching } = useQuery<EventsResponse>({
     queryKey: ["attribution-events", params.toString()],
@@ -696,11 +708,11 @@ function Events() {
           </colgroup>
           <thead>
             <tr className="border-b text-xs text-muted-foreground">
-              <th className="px-5 py-2.5 text-left font-medium">Date</th>
-              <th className="px-3 py-2.5 text-left font-medium">Person</th>
-              <th className="px-3 py-2.5 text-left font-medium">Outcome</th>
-              <th className="px-3 py-2.5 text-left font-medium">Source</th>
-              <th className="px-5 py-2.5 text-left font-medium">Credited to</th>
+              <SortableHeader label="Date" sortKey="occurred_at" align="left" sort={sort} onToggle={toggle} className="px-5 py-2.5" />
+              <SortableHeader label="Person" sortKey="email" align="left" sort={sort} onToggle={toggle} className="py-2.5" />
+              <SortableHeader label="Outcome" sortKey="event_type" align="left" sort={sort} onToggle={toggle} className="py-2.5" />
+              <SortableHeader label="Source" sortKey="source_platform" align="left" sort={sort} onToggle={toggle} className="py-2.5" />
+              <SortableHeader label="Credited to" sortKey="client_name" align="left" sort={sort} onToggle={toggle} className="px-5 py-2.5" />
             </tr>
           </thead>
           <tbody className="divide-y">

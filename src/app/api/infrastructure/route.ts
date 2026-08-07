@@ -31,7 +31,12 @@ export async function GET(request: NextRequest) {
 
   const view = params.get("view") ?? "inbox"; // inbox | domain | provider
   const search = params.get("q")?.trim() || null;
-  const sort = params.get("sort") ?? "sent"; // sent | bounce_rate | reply_rate
+  /*
+   * NULL means "no sort" — the third click on a header — and each RPC falls
+   * back to its own default order rather than an arbitrary one.
+   */
+  const sort = params.get("sort");
+  const dir = params.get("dir") === "asc" ? "asc" : "desc";
   const minSent = Number(params.get("min_sent") ?? DEFAULT_MIN_SENT);
   const limit = Math.min(Number(params.get("limit") ?? 100), 500);
   const offset = Math.max(Number(params.get("offset") ?? 0), 0);
@@ -47,6 +52,7 @@ export async function GET(request: NextRequest) {
           p_min_sent: 0,
           p_search: search,
           p_sort: sort,
+          p_dir: dir,
           p_limit: limit,
           p_offset: offset,
         })
@@ -54,6 +60,9 @@ export async function GET(request: NextRequest) {
           p_team_id: teamId,
           p_group: view,
           p_min_sent: 0,
+          // The domain and provider rollups had no sort at all until now.
+          p_sort: sort,
+          p_dir: dir,
         }),
 
     // "Problem accounts surfaced by bounce rate, so a single bad inbox can be
@@ -63,7 +72,10 @@ export async function GET(request: NextRequest) {
       p_team_id: teamId,
       p_min_sent: minSent,
       p_search: null,
+      // Fixed, whatever the table is sorted by: this list exists to surface the
+      // worst bounce rate, and following the table's sort would defeat it.
       p_sort: "bounce_rate",
+      p_dir: "desc",
       p_limit: 12,
       p_offset: 0,
     }),
